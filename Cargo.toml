@@ -1,0 +1,38 @@
+[package]
+name = "fancy-flow"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "Rust runtime for fancy-flow workflow graphs -- the fourth twin of @particle-academy/fancy-flow's engine. Same WorkflowSchema JSON in, same outputs out."
+license = "MIT"
+repository = "https://github.com/Particle-Academy/fancy-flow-rs"
+homepage = "https://ui.particle.academy"
+keywords = ["workflow", "flow", "automation", "agentic", "engine"]
+categories = ["data-structures", "no-std"]
+readme = "README.md"
+exclude = ["/.github"]
+
+[dependencies]
+# ONE dependency, and it is first-party with an empty tree of its own. Rust has
+# no JSON in its standard library -- the one thing the PHP and Python twins get
+# for free -- and the consumer compiles this into a blockchain node, where every
+# third-party crate is audit surface. `fancy-json` exists so this line is not
+# `serde_json`.
+fancy-json = { version = "0.1", git = "https://github.com/Particle-Academy/fancy-json-rs", branch = "main" }
+
+[dev-dependencies]
+fancy-conformance = { git = "https://github.com/Particle-Academy/fancy-conformance", branch = "main" }
+
+[features]
+default = ["std"]
+# `std` supplies a wall clock and `std::error::Error`. Without it the host
+# injects a `Clock`, which is what a deterministic consumer wants anyway.
+std = ["fancy-json/std"]
+
+[lints.rust]
+missing_docs = "warn"
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"

@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      # The four shared conformance tables run HERE, on every push and PR --
+      # rule 1 of fancy-conformance's runners/README.md. Not nightly, not at
+      # release. A missing checkout is a failure, never a skip: the loader
+      # returns an error rather than falling back, so the job goes red.
+      - name: Test
+        run: cargo test --all-features
+
+      - name: Test (release)
+        run: cargo test --release --all-features
+
+  no-std:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv7em-none-eabi
+
+      - name: Build for a target with no std at all
+        # A bare-metal target proves there is no accidental `std` in the tree,
+        # which is the claim the README actually makes.
+        run: cargo build --no-default-features --target thumbv7em-none-eabi
+
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: The runtime tree must stay first-party
+        # One dependency, and it is ours. Rust has no JSON in its standard
+        # library -- the one thing the PHP and Python twins get for free -- and
+        # this crate's consumer compiles it into a blockchain node. A crate
+        # appearing here needs the owner's approval, and nothing else would
+        # notice one appear.
+        run: |
+          tree=$(cargo tree --edges normal --prefix none \
+                 | grep -v '^fancy-flow' | grep -v '^fancy-json' | grep -v '^$' || true)
+          if [ -n "$tree" ]; then
+            echo "fancy-flow has grown third-party dependencies:"
+            echo "$tree"
+            echo
+            echo "Third-party code needs the owner's approval. See the envelope AGENTS.md."
+            exit 1
+          fi
+          echo "Runtime tree is fancy-flow -> fancy-json. Good."
+          cargo tree --edges normal
