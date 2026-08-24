@@ -3,10 +3,19 @@
 //! The kinds `@particle-academy/fancy-flow` ships, ported kind for kind, plus
 //! batteries-included framework-free executors:
 //!
-//! ```ignore
+//! ```
+//! use fancy_flow::nodes::support::ExecutorDeps;
+//! use fancy_flow::registry::{builtin, NodeKindRegistry};
+//!
 //! let mut kinds = NodeKindRegistry::new();
-//! builtin::register(&mut kinds, true);          // install the kind definitions
-//! let executors = builtin::executors(&deps);    // default executors, offline
+//! builtin::register(&mut kinds, true);       // install the kind definitions
+//!
+//! let deps = ExecutorDeps::default();        // offline, deterministic
+//! let executors = builtin::executors(&deps); // a default executor per kind
+//!
+//! assert!(kinds.has("branch"));
+//! assert!(kinds.has("@particle-academy/branch"), "every id the kind answers to");
+//! assert!(executors.has_kind("llm_branch"), "including the pre-rename spelling");
 //! ```
 //!
 //! On the TypeScript side the built-in kinds ship *without* executors — each

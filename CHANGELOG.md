@@ -10,6 +10,14 @@ promising otherwise until 1.0.
 
 ## [Unreleased]
 
+### Changed
+
+- The two `ignore`d doc examples now compile and run. Neither was a parity gap
+  and neither was slow — they were fragments that would not compile, held to a
+  weaker standard than the README in the same crate. `pause_for_human`'s example
+  now runs a graph and asserts the pause DECODES, so it proves the contract its
+  prose describes. **No doctest is ignored; 46 tests, none ignored.**
+
 ## [0.1.0] - 2026-08-23
 
 ### Added

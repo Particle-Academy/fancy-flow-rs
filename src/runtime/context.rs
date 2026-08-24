@@ -101,10 +101,37 @@ impl<'a> ExecutionContext<'a> {
     /// Reach for this rather than hand-encoding a reason, so the format stays
     /// ours to change:
     ///
-    /// ```ignore
-    /// if ctx.input("values").is_none() {
-    ///     return Err(ctx.pause_for_human("input", Some(fields)));
-    /// }
+    /// ```
+    /// use fancy_flow::executors::executor;
+    /// use fancy_flow::{
+    ///     ExecutionContext, ExecutorRegistry, FlowGraph, FlowNode, FlowRunner, Pause,
+    ///     RunOptions,
+    /// };
+    ///
+    /// let gate = executor(|ctx: &mut ExecutionContext<'_>| {
+    ///     match ctx.input("values") {
+    ///         Some(values) => Ok(values.clone()),
+    ///         // Absent, not falsy. An empty submission is a real answer.
+    ///         None => Err(ctx.pause_for_human("input", None)),
+    ///     }
+    /// });
+    ///
+    /// let graph = FlowGraph {
+    ///     nodes: vec![FlowNode::new("ask", "user_input")],
+    ///     edges: vec![],
+    /// };
+    /// let mut executors = ExecutorRegistry::new();
+    /// executors.bind("user_input", gate);
+    ///
+    /// let result = FlowRunner::new().run(&graph, &executors, &RunOptions::new())?;
+    ///
+    /// // The run did not FAIL — it is waiting. That distinction is the whole
+    /// // contract, and it survives only because the reason travels verbatim.
+    /// assert!(!result.ok);
+    /// let signal = Pause::decode(result.error.as_deref()).expect("a pause, not a failure");
+    /// assert_eq!(signal.node_id, "ask");
+    /// assert!(signal.is_input());
+    /// # Ok::<(), fancy_flow::RunAborted>(())
     /// ```
     ///
     /// Note the *absent* check rather than a truthiness test — an empty

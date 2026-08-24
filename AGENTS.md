@@ -179,9 +179,23 @@ conformance checkout is somewhere unusual.
 
 ## Status
 
-**0.1.0 — core parity, built and green, unpublished.** 43 tests: 85 shared
-conformance cases across four tables, plus the invariant, policy and schema
-suites.
+**0.1.0 — core parity, built and green, unpublished.** 46 tests, **none
+ignored**: 85 shared conformance cases across four tables, plus the invariant,
+policy and schema suites and three doctests.
+
+**No doc example is `ignore`d, and none may be.** The README is compiled because
+a README that does not compile is one that stopped being true and nothing else
+in the build would notice — and a doc comment is held to the same bar. Two
+started as `ignore` fragments and were made real; `pause_for_human`'s now runs a
+graph and asserts the pause DECODES, so the example proves the contract its
+prose describes instead of illustrating it.
+
+**Publish order is enforced by cargo, and verified.** `fancy-flow` declares
+`fancy-json` with both a `version` and a `git` source; cargo strips the git
+source on publish and keeps the version requirement, so `cargo publish` refuses
+with `no matching package named fancy-json found` until `fancy-json 0.1` is live
+on crates.io. The version-less git dev-dependency on `fancy-conformance` is
+dropped at publish and does not gate. **fancy-json first, then fancy-flow.**
 
 **Not built, and deliberately after 0.1:** the durable layer (claims, frontier,
 per-node replay through the same `Walk`, retry policy, human gates,
