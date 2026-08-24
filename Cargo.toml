@@ -18,7 +18,12 @@ exclude = ["/.github"]
 # for free -- and the consumer compiles this into a blockchain node, where every
 # third-party crate is audit surface. `fancy-json` exists so this line is not
 # `serde_json`.
-fancy-json = { version = "0.1", git = "https://github.com/Particle-Academy/fancy-json-rs", branch = "main" }
+# `default-features = false` is LOAD-BEARING. Without it this crate's
+# `--no-default-features` build still drags `std` in through fancy-json's own
+# defaults -- so `no_std` would be a claim that compiles on a host (where std
+# exists) and fails on bare metal. Verified against thumbv7em-none-eabi, not
+# against the host.
+fancy-json = { version = "0.1", default-features = false, git = "https://github.com/Particle-Academy/fancy-json-rs", branch = "main" }
 
 [dev-dependencies]
 fancy-conformance = { git = "https://github.com/Particle-Academy/fancy-conformance", branch = "main" }
