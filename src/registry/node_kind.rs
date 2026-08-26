@@ -152,10 +152,66 @@ impl ConfigField {
     }
 }
 
+/// One field a kind emits, addressable from an expression as `{{ in.<path> }}`.
+///
+/// This is a FIELD, not a port. `outputs` says where an edge attaches;
+/// this says what an author may reference. Different questions, and only this
+/// one answers "does that field exist".
+#[derive(Debug, Clone, PartialEq)]
+pub struct OutputField {
+    /// Dot-path relative to the emitted value: `text`, `user.email`.
+    pub path: String,
+    /// `string`, `number`, `boolean`, `object`, `array`, `unknown`.
+    pub kind: Option<String>,
+    /// What it holds, for an authoring surface to show.
+    pub description: Option<String>,
+}
+
+impl OutputField {
+    /// A field with a path and a type.
+    #[must_use]
+    pub fn new(path: &str, kind: &str) -> Self {
+        Self {
+            path: path.to_string(),
+            kind: Some(kind.to_string()),
+            description: None,
+        }
+    }
+
+    /// Describe it, builder-style.
+    #[must_use]
+    pub fn describe(mut self, description: &str) -> Self {
+        self.description = Some(description.to_string());
+        self
+    }
+}
+
+/// What a kind emits.
+///
+/// The other runtimes express the config-dependent case as a closure over the
+/// node's own config. That cannot live in this struct: `NodeKind` derives
+/// `Clone` and `PartialEq`, and a boxed closure is neither. So the
+/// config-dependent case is carried as a MARKER and resolved by the host,
+/// exactly as it is after crossing a JSON manifest anywhere else — Rust's
+/// in-memory form and the serialised form are the same shape here, which is one
+/// fewer thing to get wrong.
+///
+/// `Dynamic` is emphatically NOT "emits nothing". A reader must tell it from
+/// both an absent shape and an empty one, because the correct response differs:
+/// ask the host, versus fall back to your own knowledge, versus refuse.
+#[derive(Debug, Clone, PartialEq)]
+pub enum OutputShape {
+    /// These exact fields, whatever the config says.
+    Fields(Vec<OutputField>),
+    /// Depends on the node's own config; this process cannot resolve it.
+    Dynamic,
+}
+
 /// An authorable node type — its shape, ports and config schema.
 ///
 /// `inputs` / `outputs` are nullable to preserve the "not declared" vs
-/// "declared empty" distinction the engine reads.
+/// "declared empty" distinction the engine reads, and `output_shape` is
+/// nullable for the same reason one level along.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeKind {
     /// The canonical id.
@@ -193,6 +249,23 @@ pub struct NodeKind {
     /// A durable run RETRIES; `unsafe-to-replay` is the node saying a second
     /// attempt is not a repeat of the first. Only the durable driver reads it.
     pub side_effects: Option<String>,
+    /// The FIELDS this kind emits, or `None` when nothing has been declared.
+    ///
+    /// Three states, and the third is why it is an `Option`:
+    ///   `None`                      NOT DECLARED. Nobody has said. Unknown.
+    ///   `Some(Fields(vec![]))`       declares that it emits no fields.
+    ///   `Some(Fields(..))`           these fields.
+    ///   `Some(Dynamic)`              depends on config; ask the host.
+    ///
+    /// Collapsing `None` into an empty list is the bug this field exists to
+    /// fix: a reader treating "nothing declared" as "emits nothing" refuses a
+    /// legitimate `{{ in.title }}`, and a false rejection is one the author
+    /// cannot comply with.
+    ///
+    /// A pass-through kind — `branch`, `merge`, `output`, `transform` — stays
+    /// `None` on purpose. It emits whatever arrived, so its shape is not
+    /// knowable from the kind alone.
+    pub output_shape: Option<OutputShape>,
 }
 
 impl NodeKind {
@@ -213,6 +286,7 @@ impl NodeKind {
             aliases: Vec::new(),
             pauses_for_human: None,
             side_effects: None,
+            output_shape: None,
         }
     }
 
@@ -267,6 +341,43 @@ impl NodeKind {
     pub fn side_effects(mut self, effects: &str) -> Self {
         self.side_effects = Some(effects.to_string());
         self
+    }
+
+    /// Declare the fields this kind emits, builder-style.
+    #[must_use]
+    pub fn output_shape(mut self, fields: Vec<OutputField>) -> Self {
+        self.output_shape = Some(OutputShape::Fields(fields));
+        self
+    }
+
+    /// Declare that the emitted fields depend on the node's own config.
+    ///
+    /// Use this rather than leaving the shape absent: "config-dependent" and
+    /// "nobody declared" need different responses from a reader, and an absent
+    /// value cannot say which one it means.
+    #[must_use]
+    pub fn output_shape_dynamic(mut self) -> Self {
+        self.output_shape = Some(OutputShape::Dynamic);
+        self
+    }
+
+    /// The declared fields, or `None` when undeclared OR config-dependent.
+    ///
+    /// Pair it with [`Self::has_dynamic_output_shape`] when the difference
+    /// matters — and it usually does, because falling back to a fixed table to
+    /// answer a config-dependent question is wrong by construction.
+    #[must_use]
+    pub fn output_fields(&self) -> Option<&[OutputField]> {
+        match &self.output_shape {
+            Some(OutputShape::Fields(fields)) => Some(fields),
+            _ => None,
+        }
+    }
+
+    /// True when the shape depends on config and this process cannot resolve it.
+    #[must_use]
+    pub fn has_dynamic_output_shape(&self) -> bool {
+        matches!(self.output_shape, Some(OutputShape::Dynamic))
     }
 
     /// Every id this kind answers to, canonical first.

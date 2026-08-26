@@ -10,6 +10,42 @@ promising otherwise until 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- **`output_shape` — the FIELDS a kind emits, not its ports.** `OutputField`,
+  the `OutputShape` enum, `NodeKind::output_shape` plus `output_fields()` and
+  `has_dynamic_output_shape()`; six builtins declare (`notify`, `webhook_out`,
+  `for_each`, `wait`, `log`, `embed_search`) and two declare themselves
+  config-dependent (`llm_call`, `user_input`).
+
+  This crate was the FOURTH runtime found missing the surface. TypeScript had
+  it, PHP and Python had just gained it, and here it did not exist — so a host
+  had nothing to check `{{ in.field }}` against and would have to hand-maintain
+  a table read off these executors, which is exactly what a design partner had
+  been forced to do and exactly how their table drifted into refusing a
+  legitimate field.
+
+  **The config-dependent case is a MARKER here, not a closure.** `NodeKind`
+  derives `Clone` and `PartialEq`, and a boxed closure is neither — so
+  `OutputShape::Dynamic` says *"depends on config, ask the host"*, which is the
+  same shape the other runtimes decay to after crossing a JSON manifest. Rust's
+  in-memory and serialised forms therefore agree, which is one fewer thing to
+  get wrong.
+
+  Every declaration was read from THIS crate's executors and cited
+  (`nodes/human.rs:81-84`, `nodes/io.rs:93-97`, `nodes/logic.rs:80-82`,
+  `nodes/logic.rs:155-157`, `nodes/output.rs:39-40`, `nodes/ai.rs:165-166`).
+  None was copied from the other three: two declarations agreeing is not
+  evidence, which is the mechanism behind every instance of this bug.
+
+### Deliberately still undeclared
+
+- `branch`, `switch_case`, `output`, `transform`, `merge`, `manual_trigger`,
+  `webhook_trigger`, `human_approval`, `variable`, `schedule_trigger`. They emit
+  what arrived, so their shape is not knowable from the kind alone, and `None`
+  is the honest answer — read as *unknown, do not refuse*, never *emits
+  nothing*. `tests/output_shape.rs` asserts they stay that way.
+
 ### Changed
 
 - The two `ignore`d doc examples now compile and run. Neither was a parity gap

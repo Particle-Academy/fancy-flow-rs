@@ -30,6 +30,7 @@
 //! **Quote the SET, not the count.** "27 builtin kinds" was already ambiguous
 //! across two runtimes; with four it is meaningless.
 
+use crate::registry::node_kind::OutputField;
 use alloc::rc::Rc;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -100,6 +101,8 @@ pub fn kinds() -> Vec<NodeKind> {
     // -- human -----------------------------------------------------------
     out.push(
         NodeKind::new("user_input", "human", "User input")
+            // Config-dependent: emits the keys its author declared.
+            .output_shape_dynamic()
             .describe("Stops the run until a person submits the requested values.")
             .inputs(ports(&["in"]))
             .outputs(ports(&["out"]))
@@ -116,6 +119,18 @@ pub fn kinds() -> Vec<NodeKind> {
     );
     out.push(
         NodeKind::new("notify", "human", "Notify")
+            // Read from nodes/human.rs:81-84.
+            .output_shape(
+                [
+                    OutputField::new("sent", "boolean")
+                        .describe("True once the message was handed to the channel."),
+                    OutputField::new("channel", "string").describe("The channel it went to."),
+                    OutputField::new("to", "string").describe("The recipient."),
+                    OutputField::new("message", "string").describe("The rendered message."),
+                ]
+                .into_iter()
+                .collect(),
+            )
             .describe("Sends a message to a channel.")
             .inputs(ports(&["in"]))
             .outputs(ports(&["out"]))
@@ -159,6 +174,15 @@ pub fn kinds() -> Vec<NodeKind> {
     );
     out.push(
         NodeKind::new("for_each", "logic", "For each")
+            // Read from nodes/logic.rs:80-82.
+            .output_shape(
+                [
+                    OutputField::new("items", "array").describe("The list that was iterated."),
+                    OutputField::new("count", "number").describe("How many items it held."),
+                ]
+                .into_iter()
+                .collect(),
+            )
             .describe("Publishes a collection and its size. Fan-out as DATA, not as jobs.")
             .inputs(ports(&["in"]))
             .outputs(ports(&["item", "done"]))
@@ -179,6 +203,17 @@ pub fn kinds() -> Vec<NodeKind> {
     );
     out.push(
         NodeKind::new("wait", "logic", "Wait")
+            // Read from nodes/logic.rs:155-157.
+            .output_shape(
+                [
+                    OutputField::new("waited", "string").describe("Which wait mode ran."),
+                    OutputField::new("duration", "number").describe("How long it waited."),
+                    OutputField::new("input", "unknown")
+                        .describe("The value that arrived, carried forward."),
+                ]
+                .into_iter()
+                .collect(),
+            )
             .describe("A pause point. The framework-free default does not sleep.")
             .inputs(ports(&["in"]))
             .outputs(ports(&["out"]))
@@ -264,6 +299,8 @@ pub fn kinds() -> Vec<NodeKind> {
     // -- ai --------------------------------------------------------------
     out.push(
         NodeKind::new("llm_call", "ai", "LLM call")
+            // Config-dependent: config `response_schema` adds `data`.
+            .output_shape_dynamic()
             .describe("A free-form completion.")
             .inputs(ports(&["in"]))
             .outputs(ports(&["out"]))
@@ -302,6 +339,16 @@ pub fn kinds() -> Vec<NodeKind> {
     );
     out.push(
         NodeKind::new("embed_search", "ai", "Embedding search")
+            // Read from nodes/ai.rs:165-166.
+            .output_shape(
+                [
+                    OutputField::new("query", "string").describe("The query that was embedded."),
+                    OutputField::new("matches", "array")
+                        .describe("Vector-store hits for the query."),
+                ]
+                .into_iter()
+                .collect(),
+            )
             .describe("Embeds a query and searches a vector store.")
             .inputs(ports(&["in"]))
             .outputs(ports(&["out"]))
@@ -335,6 +382,18 @@ pub fn kinds() -> Vec<NodeKind> {
     );
     out.push(
         NodeKind::new("webhook_out", "io", "Webhook out")
+            // Read from nodes/io.rs:93-97.
+            .output_shape(
+                [
+                    OutputField::new("sent", "boolean").describe("True once the request was made."),
+                    OutputField::new("status", "number")
+                        .describe("HTTP status, when the transport reported one."),
+                    OutputField::new("response", "unknown")
+                        .describe("The response body, when there was one."),
+                ]
+                .into_iter()
+                .collect(),
+            )
             .describe("POSTs a payload to a configured URL.")
             .inputs(ports(&["in"]))
             .outputs(ports(&["out"]))
@@ -358,6 +417,15 @@ pub fn kinds() -> Vec<NodeKind> {
     );
     out.push(
         NodeKind::new("log", "output", "Log")
+            // Read from nodes/output.rs:39-40.
+            .output_shape(
+                [
+                    OutputField::new("logged", "string").describe("The message that was written."),
+                    OutputField::new("level", "string").describe("The level it was written at."),
+                ]
+                .into_iter()
+                .collect(),
+            )
             .describe("Writes a line to the run feed.")
             .inputs(ports(&["in"]))
             .outputs(Vec::new())
