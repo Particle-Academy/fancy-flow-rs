@@ -76,7 +76,7 @@ pub fn kinds() -> Vec<NodeKind> {
     out.push(
         NodeKind::new("manual_trigger", "trigger", "Manual trigger")
             // trigger.rs:18 -- Value::Object(ctx.inputs().clone())
-            .emits(EmitsRelation::Input)
+            .emits(EmitsRelation::InputMapMerged)
             .describe("Starts a run when a person or an agent asks for one.")
             .inputs(Vec::new())
             .outputs(ports(&["out"])),
@@ -100,7 +100,7 @@ pub fn kinds() -> Vec<NodeKind> {
                 .collect(),
             )
             // trigger.rs:48-51 -- copies every input key into the TOP level
-            .emits(EmitsRelation::InputsMerged)
+            .emits(EmitsRelation::InputMapMerged)
             .describe("Starts a run on a cron schedule.")
             .inputs(Vec::new())
             .outputs(ports(&["out"]))

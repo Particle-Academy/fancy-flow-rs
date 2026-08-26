@@ -132,9 +132,9 @@ fn declares_the_relation_where_a_field_list_cannot() {
         ("switch_case", EmitsRelation::Input),
         ("output", EmitsRelation::Input),
         ("human_approval", EmitsRelation::Input),
-        ("manual_trigger", EmitsRelation::Input),
+        ("manual_trigger", EmitsRelation::InputMapMerged),
         ("variable", EmitsRelation::Expression("value".to_string())),
-        ("schedule_trigger", EmitsRelation::InputsMerged),
+        ("schedule_trigger", EmitsRelation::InputMapMerged),
         // Config-dependent, so a marker here rather than a closure -- the same
         // shape the peers decay to across a JSON manifest.
         ("transform", EmitsRelation::Dynamic),

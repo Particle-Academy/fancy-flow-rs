@@ -223,8 +223,21 @@ pub enum OutputShape {
 pub enum EmitsRelation {
     /// Emits its input unchanged.
     Input,
-    /// Emits the union of every input's fields, at the top level.
+    /// Emits the union of every input PAYLOAD's fields, at the top level.
+    ///
+    /// This is what `merge` does: it unwraps each port and unions the payloads.
     InputsMerged,
+    /// Emits the raw input MAP merged in, whose shape DEPENDS ON POSITION.
+    ///
+    /// A different operation from [`Self::InputsMerged`], not a positional
+    /// variant of it. `collect_inputs` seeds an entry node FLAT and keys every
+    /// other node by handle, so `schedule_trigger` at an entry point emits its
+    /// payload's fields at top level, and the same kind with an inbound edge
+    /// emits `{ cron, timezone, in: {...} }`.
+    ///
+    /// Two names because they are two operations, rather than one name plus a
+    /// positional rule the reader has to know.
+    InputMapMerged,
     /// Emits the shape the expression in THIS CONFIG KEY names.
     ///
     /// The key is carried because a consumer hardcoding "the field called

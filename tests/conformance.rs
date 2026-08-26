@@ -325,6 +325,7 @@ fn kind_declaration_surface_matches_every_peer() {
                 None => Value::Null,
                 Some(EmitsRelation::Input) => Value::from("input"),
                 Some(EmitsRelation::InputsMerged) => Value::from("inputs-merged"),
+                Some(EmitsRelation::InputMapMerged) => Value::from("input-map-merged"),
                 Some(EmitsRelation::Expression(key)) => {
                     Value::from(format!("expression:{key}").as_str())
                 }
