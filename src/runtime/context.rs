@@ -158,10 +158,16 @@ impl<'a> ExecutionContext<'a> {
     /// a dead branch contributes nothing.
     #[must_use]
     pub fn input(&self, port: &str) -> Option<&Value> {
-        match self.inputs.get(port) {
-            Some(Value::Null) | None => None,
-            Some(value) => Some(value),
-        }
+        // Key PRESENCE, not null-ness. A port BOUND to null is not an ABSENT
+        // port, and callers pairing this with a fallback rely on the
+        // difference: the fallback is for an entry node with no `in` edge, not
+        // for a port that genuinely holds null.
+        //
+        // Collapsing them substituted a PLAUSIBLE value -- the inputs map looks
+        // exactly like real data, so a downstream node read fields from the
+        // wrong place and nothing looked wrong. `??` (and `is None`, and
+        // `unwrap_or`) is safe only where null is not a legal value.
+        self.inputs.get(port)
     }
 
     /// Read the default `in` port, falling back to the whole input map.
