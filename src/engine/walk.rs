@@ -372,10 +372,18 @@ impl<'a> Walk<'a> {
                 );
             }
             if let Some(port) = map.get("branch").and_then(Value::as_str) {
-                // `r.value ?? r` on the peer runtimes: an omitted value carries
-                // the whole result object.
+                // Key PRESENCE, not null-ness. Two different questions:
+                //   no `value` key at all -> the whole result IS the payload
+                //   `value` present, null -> the payload is null; pass it on
+                // Matching `Some(Value::Null) | None` collapsed them, so a
+                // branch whose payload was null leaked the WRAPPER downstream --
+                // every following node received `{ branch, value }`, two fields
+                // no kind declares. The reachable path is an upstream
+                // `transform` whose dot-path did not resolve. All four runtimes
+                // shared this identically, so no parity table could catch it:
+                // they agreed on being wrong.
                 let value = match map.get("value") {
-                    Some(Value::Null) | None => result.clone(),
+                    None => result.clone(),
                     Some(value) => value.clone(),
                 };
                 return (alloc::vec![port.to_string()], value);
