@@ -30,7 +30,7 @@
 //! **Quote the SET, not the count.** "27 builtin kinds" was already ambiguous
 //! across two runtimes; with four it is meaningless.
 
-use crate::registry::node_kind::OutputField;
+use crate::registry::node_kind::{EmitsRelation, OutputField};
 use alloc::rc::Rc;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -75,6 +75,8 @@ pub fn kinds() -> Vec<NodeKind> {
     // -- triggers --------------------------------------------------------
     out.push(
         NodeKind::new("manual_trigger", "trigger", "Manual trigger")
+            // trigger.rs:18 -- Value::Object(ctx.inputs().clone())
+            .emits(EmitsRelation::Input)
             .describe("Starts a run when a person or an agent asks for one.")
             .inputs(Vec::new())
             .outputs(ports(&["out"])),
@@ -88,6 +90,17 @@ pub fn kinds() -> Vec<NodeKind> {
     );
     out.push(
         NodeKind::new("schedule_trigger", "trigger", "Schedule")
+            .output_shape(
+                [
+                    OutputField::new("cron", "string").describe("The cron expression that fired."),
+                    OutputField::new("timezone", "string")
+                        .describe("The timezone it was evaluated in."),
+                ]
+                .into_iter()
+                .collect(),
+            )
+            // trigger.rs:48-51 -- copies every input key into the TOP level
+            .emits(EmitsRelation::InputsMerged)
             .describe("Starts a run on a cron schedule.")
             .inputs(Vec::new())
             .outputs(ports(&["out"]))
@@ -111,6 +124,8 @@ pub fn kinds() -> Vec<NodeKind> {
     );
     out.push(
         NodeKind::new("human_approval", "human", "Human approval")
+            // human.rs:45 -- Port::branch(port, ctx.input_or_all())
+            .emits(EmitsRelation::Input)
             .describe("Stops the run until a person approves or denies.")
             .inputs(ports(&["in"]))
             .outputs(ports(&["approved", "denied"]))
@@ -149,6 +164,8 @@ pub fn kinds() -> Vec<NodeKind> {
     // -- logic -----------------------------------------------------------
     out.push(
         NodeKind::new("branch", "logic", "Branch")
+            // logic.rs:32 -- Port::branch(port, ctx.input_or_all())
+            .emits(EmitsRelation::Input)
             .describe("Two ports, exactly one taken.")
             .inputs(ports(&["in"]))
             .outputs(ports(&["true", "false"]))
@@ -161,6 +178,8 @@ pub fn kinds() -> Vec<NodeKind> {
     );
     out.push(
         NodeKind::new("switch_case", "logic", "Switch")
+            // logic.rs:55 -- Port::only(&port, ctx.input_or_all())
+            .emits(EmitsRelation::Input)
             .describe("Routes on a key to one of several named ports.")
             .inputs(ports(&["in"]))
             // Config-driven ports: a `switch_case` node's real outputs come
@@ -194,6 +213,8 @@ pub fn kinds() -> Vec<NodeKind> {
     );
     out.push(
         NodeKind::new("merge", "logic", "Merge")
+            // logic.rs:106-113 -- 'concat' builds a LIST, whose elements are not addressable as fields
+            .emits(EmitsRelation::Dynamic)
             .describe("Several inputs, one value.")
             .inputs(ports(&["a", "b"]))
             .outputs(ports(&["out"]))
@@ -226,6 +247,8 @@ pub fn kinds() -> Vec<NodeKind> {
     );
     out.push(
         NodeKind::new("transform", "logic", "Transform")
+            // logic.rs:171/174 -- TWO returns: the input when unconfigured, else the expression's shape
+            .emits(EmitsRelation::Dynamic)
             .describe("Reshape in place.")
             .inputs(ports(&["in"]))
             .outputs(ports(&["out"]))
@@ -286,6 +309,8 @@ pub fn kinds() -> Vec<NodeKind> {
     );
     out.push(
         NodeKind::new("variable", "data", "Variable")
+            // data.rs:156 -- expr::evaluate_in(ctx.option(\"value\"), ..)
+            .emits(EmitsRelation::Expression("value".to_string()))
             .describe("A workflow-scoped value.")
             .inputs(ports(&["in"]))
             .outputs(ports(&["out"]))
@@ -408,6 +433,8 @@ pub fn kinds() -> Vec<NodeKind> {
     // -- output ----------------------------------------------------------
     out.push(
         NodeKind::new("output", "output", "Output")
+            // output.rs:15 -- ctx.input_or_all()
+            .emits(EmitsRelation::Input)
             .describe("Captures a value into the run's outputs.")
             .inputs(ports(&["in"]))
             // A terminal node: an EMPTY declared list, not an absent one. The

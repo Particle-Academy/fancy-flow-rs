@@ -6,6 +6,7 @@
 //! consumer's hand-maintained table drifted into refusing a legitimate field
 //! while accepting one that did not exist.
 
+use fancy_flow::registry::EmitsRelation;
 use fancy_flow::registry::{builtin, NodeKindRegistry};
 
 fn registry() -> NodeKindRegistry {
@@ -87,7 +88,10 @@ fn pass_through_kinds_stay_undeclared_rather_than_guessing() {
         "webhook_trigger",
         "human_approval",
         "variable",
-        "schedule_trigger",
+        // schedule_trigger LEFT this list when `emits` arrived: a partial
+        // ["cron", "timezone"] list was unsafe only while nothing could say the
+        // inputs also merge. With EmitsRelation::InputsMerged beside it, the two
+        // are complete together.
     ] {
         let r = registry();
         let kind = r
@@ -116,4 +120,62 @@ fn no_declared_field_has_an_empty_path() {
             }
         }
     }
+}
+
+#[test]
+fn declares_the_relation_where_a_field_list_cannot() {
+    // Each read from this crate's executor and checked for MERGE vs NEST before
+    // being assigned -- a relation with no destination can only describe a
+    // top-level merge.
+    let cases: &[(&str, EmitsRelation)] = &[
+        ("branch", EmitsRelation::Input),
+        ("switch_case", EmitsRelation::Input),
+        ("output", EmitsRelation::Input),
+        ("human_approval", EmitsRelation::Input),
+        ("manual_trigger", EmitsRelation::Input),
+        ("variable", EmitsRelation::Expression("value".to_string())),
+        ("schedule_trigger", EmitsRelation::InputsMerged),
+        // Config-dependent, so a marker here rather than a closure -- the same
+        // shape the peers decay to across a JSON manifest.
+        ("transform", EmitsRelation::Dynamic),
+        ("merge", EmitsRelation::Dynamic),
+    ];
+
+    for (name, expected) in cases {
+        let r = registry();
+        let kind = r
+            .get(name)
+            .unwrap_or_else(|| panic!("`{name}` is not registered"));
+        assert_eq!(kind.emits.as_ref(), Some(expected), "`{name}` relation");
+    }
+}
+
+#[test]
+fn an_expression_relation_names_its_own_config_key() {
+    // `transform` reads `expression`; `variable` reads `value`. A consumer
+    // hardcoding "the field called expression" has copied our knowledge one
+    // level down -- the thing this removes.
+    let r = registry();
+    assert_eq!(
+        r.get("variable").unwrap().expression_config_key(),
+        Some("value")
+    );
+    assert_eq!(r.get("branch").unwrap().expression_config_key(), None);
+}
+
+#[test]
+fn wait_and_webhook_trigger_declare_no_relation() {
+    // `wait` NESTS its input under a key, so a relation would make a reader
+    // accept {{ in.<any inbound field> }} at top level and resolve to nothing
+    // at run time. `webhook_trigger`'s choice is DATA-dependent, not
+    // config-dependent, so no relation is honest for it either.
+    let r = registry();
+    assert_eq!(r.get("wait").unwrap().emits, None);
+    assert_eq!(r.get("webhook_trigger").unwrap().emits, None);
+
+    // wait still declares its FIELDS -- that is the alternative, not a gap.
+    assert_eq!(
+        paths("wait"),
+        Some(vec!["waited".into(), "duration".into(), "input".into()])
+    );
 }

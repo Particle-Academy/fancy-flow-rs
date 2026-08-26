@@ -207,6 +207,41 @@ pub enum OutputShape {
     Dynamic,
 }
 
+/// How a kind's output RELATES to its input, when the relation is what is
+/// knowable rather than a field list.
+///
+/// `output_shape` answers *which fields*; this answers *where they come from*.
+/// Separate because they are separate questions.
+///
+/// **Every variant is TOP-LEVEL by construction.** A relation cannot describe a
+/// value nested under a key — `wait` returns `{ waited, duration, input }`, so a
+/// relation there would make a reader accept `{{ in.<any inbound field> }}` at
+/// top level, which resolves to nothing at run time. `wait` declares a field
+/// list with an opaque `input` instead. Read the executor and ask *merge or
+/// nest* before assigning one; under-claiming is free.
+#[derive(Debug, Clone, PartialEq)]
+pub enum EmitsRelation {
+    /// Emits its input unchanged.
+    Input,
+    /// Emits the union of every input's fields, at the top level.
+    InputsMerged,
+    /// Emits the shape the expression in THIS CONFIG KEY names.
+    ///
+    /// The key is carried because a consumer hardcoding "the field called
+    /// expression" has copied our knowledge one level down, which is the thing
+    /// this removes: `transform` reads `expression`, `variable` reads `value`.
+    ///
+    /// Knowable only when the whole config string is a SINGLE reference;
+    /// interpolating several yields a string with no addressable fields.
+    Expression(String),
+    /// The relation itself depends on the node's config; ask the host.
+    ///
+    /// The peers express this as a closure over config. `NodeKind` derives
+    /// `Clone` and `PartialEq` and a boxed closure is neither, so it is a marker
+    /// here — the same shape the peers decay to across a JSON manifest.
+    Dynamic,
+}
+
 /// An authorable node type — its shape, ports and config schema.
 ///
 /// `inputs` / `outputs` are nullable to preserve the "not declared" vs
@@ -266,6 +301,11 @@ pub struct NodeKind {
     /// `None` on purpose. It emits whatever arrived, so its shape is not
     /// knowable from the kind alone.
     pub output_shape: Option<OutputShape>,
+    /// How this kind's output relates to its input, or `None` when undeclared.
+    ///
+    /// See [`EmitsRelation`]. `None` means nobody has said — never "there is no
+    /// relation", and never a licence to guess one.
+    pub emits: Option<EmitsRelation>,
 }
 
 impl NodeKind {
@@ -287,6 +327,7 @@ impl NodeKind {
             pauses_for_human: None,
             side_effects: None,
             output_shape: None,
+            emits: None,
         }
     }
 
@@ -378,6 +419,22 @@ impl NodeKind {
     #[must_use]
     pub fn has_dynamic_output_shape(&self) -> bool {
         matches!(self.output_shape, Some(OutputShape::Dynamic))
+    }
+
+    /// Declare how the output relates to the input, builder-style.
+    #[must_use]
+    pub fn emits(mut self, relation: EmitsRelation) -> Self {
+        self.emits = Some(relation);
+        self
+    }
+
+    /// The config key an [`EmitsRelation::Expression`] names, or `None`.
+    #[must_use]
+    pub fn expression_config_key(&self) -> Option<&str> {
+        match &self.emits {
+            Some(EmitsRelation::Expression(key)) => Some(key.as_str()),
+            _ => None,
+        }
     }
 
     /// Every id this kind answers to, canonical first.

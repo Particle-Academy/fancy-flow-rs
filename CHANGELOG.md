@@ -38,6 +38,44 @@ promising otherwise until 1.0.
   None was copied from the other three: two declarations agreeing is not
   evidence, which is the mechanism behind every instance of this bug.
 
+### Added — `emits`
+
+- **`EmitsRelation` — how a kind's output relates to its input**, plus
+  `NodeKind::emits` and `expression_config_key()`. `Input`, `InputsMerged`,
+  `Expression(key)`, `Dynamic`.
+
+  `Expression` carries its CONFIG KEY: `transform` reads `expression`,
+  `variable` reads `value`. A consumer hardcoding "the field called expression"
+  has copied our knowledge one level down, which is the thing this removes.
+
+  `Dynamic` is the config-dependent case. The peers express it as a closure over
+  config; `NodeKind` derives `Clone` and `PartialEq` and a boxed closure is
+  neither, so it is a marker — the same shape the peers decay to across a JSON
+  manifest.
+
+  Declared: `branch`, `switch_case`, `output`, `human_approval`,
+  `manual_trigger` (`Input`); `variable` (`Expression("value")`);
+  `schedule_trigger` (`InputsMerged`, composed with its own `cron`/`timezone`
+  list); `transform` and `merge` (`Dynamic`).
+
+  **`wait` and `webhook_trigger` deliberately declare none.** `wait` NESTS its
+  input under a key, so a relation there would make a reader accept
+  `{{ in.<any inbound field> }}` at top level and resolve to nothing at run
+  time; `webhook_trigger`'s choice is DATA-dependent, not config-dependent. A
+  relation with no destination can only express a top-level merge.
+
+### Fixed
+
+- **`OutputField`, `OutputShape` and `EmitsRelation` are re-exported from
+  `registry`.** They were declared in a private module and reachable only
+  through it, so a consumer could not name the types the public `NodeKind` API
+  hands back — present in the crate and unusable.
+
+  Same defect the TypeScript twin shipped, where `/engine` declared
+  `OutputField` and never exported it: two marketplace nodes imported it and
+  only compiled against source. Found here by writing the test as a consumer
+  would, from outside the crate.
+
 ### Deliberately still undeclared
 
 - `branch`, `switch_case`, `output`, `transform`, `merge`, `manual_trigger`,

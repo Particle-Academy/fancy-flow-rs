@@ -10,7 +10,11 @@ use alloc::vec::Vec;
 
 use fancy_json::{Map, Value};
 
-pub use node_kind::{ConfigField, NodeKind};
+// Re-exported by NAME, not just declared. A public type reachable only through
+// a private module is present in the crate and unusable by the name a consumer
+// would write -- the same defect the TypeScript twin shipped, where `OutputField`
+// was declared by an entry and never exported from it.
+pub use node_kind::{ConfigField, EmitsRelation, NodeKind, OutputField, OutputShape};
 
 /// A problem with one config key.
 #[derive(Debug, Clone, PartialEq, Eq)]
