@@ -94,7 +94,24 @@ impl crate::executors::Executor for LlmRouter {
             .first()
             .cloned()
             .unwrap_or_else(|| "default".to_string());
-        Ok(Port::branch(&port, ctx.input_or_all()))
+
+        // The ENVELOPE, matching the PHP and Python twins and the TypeScript
+        // contract: `{ route, reason, input }` on the chosen port, not the bare
+        // input passed through.
+        //
+        // This crate returned `Port::branch(&port, ctx.input_or_all())` until
+        // the shared kind-declaration-surface table was pointed at it. Three
+        // runtimes emitted an envelope and this one emitted the input, so
+        // `{{ in.route }}` after a router resolved on every peer and to nothing
+        // here -- silently, because an unresolved path is an empty string.
+        //
+        // `only`, not `branch`: the peers activate exactly the chosen port.
+        let mut out = Map::new();
+        out.insert("route", Value::from(port.as_str()));
+        out.insert("reason", Value::from(""));
+        out.insert("input", ctx.input_or_all());
+
+        Ok(Port::only(&port, Value::Object(out)))
     }
 }
 

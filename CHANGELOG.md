@@ -38,6 +38,34 @@ promising otherwise until 1.0.
   None was copied from the other three: two declarations agreeing is not
   evidence, which is the mechanism behind every instance of this bug.
 
+### Fixed — a real divergence, found by the shared surface table
+
+- **`llm_router` emitted the bare input where every peer emits an envelope.**
+  This crate returned `Port::branch(&port, ctx.input_or_all())`; PHP, Python and
+  the TypeScript contract all return `{ route, reason, input }` on the chosen
+  port via `only`.
+
+  So `{{ in.route }}` after a router resolved on every peer and to **nothing**
+  here — silently, because an unresolved path is an empty string. Three runtimes
+  agreed and this one did not, which is the definition of the outlier.
+
+  Found the first time `flow/kind-declaration-surface` was pointed at this
+  crate. It also reported `api_request` as undeclared, which was a plain
+  omission — the `HttpClient` result has carried `status`/`headers`/`body` all
+  along (`support/clients.rs:127-129`).
+
+### Added — the shared surface table
+
+- **Runs `flow/kind-declaration-surface`** — 19 rows, with `0202` skipped for
+  Rust and the reason recorded in the fixture: this crate cannot resolve a
+  config-dependent RELATION in-process, because `NodeKind` derives `Clone +
+  PartialEq` and cannot hold a closure. It answers `"dynamic"`, which is honest
+  and is **not** `null` — `null` claims nobody declared, about a kind that has.
+
+  A skip with a stated reason rather than a relaxed assertion: `expect_green`
+  requires `skipped == 0`, so this suite counts its one skip explicitly instead
+  of turning that check off for the whole table.
+
 ### Added — `emits`
 
 - **`EmitsRelation` — how a kind's output relates to its input**, plus

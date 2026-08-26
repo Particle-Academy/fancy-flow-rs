@@ -10,9 +10,10 @@
 //! someone added a row to one copy and nothing anywhere reported it.
 
 use fancy_conformance::{format_summary, run_table, Language, Summary};
-use fancy_json::Value;
+use fancy_json::{Map, Value};
 
 use fancy_flow::nodes::support::expr;
+use fancy_flow::registry::{builtin, EmitsRelation, NodeKindRegistry, OutputShape};
 use fancy_flow::RunIdentity;
 
 /// Print the summary unconditionally — rule 3 — then assert.
@@ -270,4 +271,93 @@ fn semver_range_matching_matches_every_peer() {
     .expect("the shared suite must load");
 
     expect_green(&summary, 17);
+}
+
+/// Parity of SURFACE -- what a kind DECLARES, not what the engine does.
+///
+/// Every other table here pins behaviour. Nothing pinned surface, and four
+/// capabilities were found present in one runtime and absent in the others as a
+/// result -- including `output_shape`, which this crate did not have at all.
+/// In each of them ABSENT reads as a legitimate answer, so nothing reported it.
+///
+/// TypeScript is the SPECIFICATION for this table, not a peer: it ships no
+/// executors, so its declarations cannot be checked against code. This crate
+/// ships its own, so a disagreement here means THIS implementation is wrong --
+/// read the executor before touching the fixture.
+#[test]
+fn kind_declaration_surface_matches_every_peer() {
+    let mut registry = NodeKindRegistry::new();
+    builtin::register(&mut registry, true);
+
+    let summary = run_table(
+        "flow/kind-declaration-surface",
+        Language::Rust,
+        None,
+        |case| {
+            let input = case.input();
+            let kind_id = input
+                .get("kind")
+                .and_then(Value::as_str)
+                .ok_or_else(|| alloc_string("case declares no kind"))?;
+
+            let kind = registry
+                .get(kind_id)
+                .ok_or_else(|| format!("builtin `{kind_id}` is not registered"))?;
+
+            // A config-dependent shape reports the MARKER, never a resolved
+            // list: the table asks what the kind DECLARES, and "depends on
+            // config" IS the declaration.
+            let output_shape = match &kind.output_shape {
+                None => Value::Null,
+                Some(OutputShape::Dynamic) => Value::from("dynamic"),
+                Some(OutputShape::Fields(fields)) => {
+                    // A SET, not an ordered list. These come out of maps, and
+                    // THIS crate inserts `count` before `items` where the peers
+                    // do the reverse -- so asserting order would report a
+                    // divergence that is not one.
+                    let mut paths: Vec<String> = fields.iter().map(|f| f.path.clone()).collect();
+                    paths.sort();
+                    Value::Array(paths.into_iter().map(Value::from).collect())
+                }
+            };
+
+            let emits = match &kind.emits {
+                None => Value::Null,
+                Some(EmitsRelation::Input) => Value::from("input"),
+                Some(EmitsRelation::InputsMerged) => Value::from("inputs-merged"),
+                Some(EmitsRelation::Expression(key)) => {
+                    Value::from(format!("expression:{key}").as_str())
+                }
+                // The peers resolve this from config; this crate carries a
+                // MARKER, because NodeKind derives Clone + PartialEq and a boxed
+                // closure is neither. So it cannot answer a per-config row, and
+                // reports "dynamic" rather than null -- null would claim nobody
+                // declared, about a kind that has. The shared table marks those
+                // rows `dynamicIsConforming`, so this is agreement, not drift.
+                Some(EmitsRelation::Dynamic) => Value::from("dynamic"),
+            };
+
+            let mut out = Map::new();
+            out.insert("outputShape", output_shape);
+            out.insert("emits", emits);
+            Ok(Value::Object(out))
+        },
+    )
+    .expect("the shared suite must load; a missing checkout is a FAILURE, not a skip");
+
+    // 19, not 20: 0202 is skipped for Rust with a recorded reason -- this crate
+    // cannot resolve a config-dependent relation in-process. expect_green
+    // asserts skipped == 0, so this row is counted deliberately rather than
+    // hidden by relaxing that check for the whole table.
+    println!("{}", format_summary(&summary));
+    assert!(
+        summary.ok,
+        "{} diverges from the shared table",
+        summary.suite
+    );
+    assert_eq!(summary.passed, 19, "every runnable case must actually run");
+    assert_eq!(
+        summary.skipped, 1,
+        "exactly one row is skipped, and it states why"
+    );
 }

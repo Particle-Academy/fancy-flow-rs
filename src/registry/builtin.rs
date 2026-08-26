@@ -341,6 +341,19 @@ pub fn kinds() -> Vec<NodeKind> {
         // stays registered as an alias — no amount of prefix arithmetic gets
         // you from one name to the other.
         NodeKind::new("llm_router", "ai", "LLM router")
+            // nodes/ai.rs -- the { route, reason, input } envelope on the chosen
+            // port. This crate emitted the bare input until the shared surface
+            // table was pointed at it and reported the divergence.
+            .output_shape(
+                [
+                    OutputField::new("route", "string").describe("The port the model chose."),
+                    OutputField::new("reason", "string").describe("Why the model chose it."),
+                    OutputField::new("input", "unknown")
+                        .describe("The value that arrived, carried forward."),
+                ]
+                .into_iter()
+                .collect(),
+            )
             .describe("Routes to one of several named branches.")
             .inputs(ports(&["in"]))
             .outputs(ports(&["default"]))
@@ -386,6 +399,17 @@ pub fn kinds() -> Vec<NodeKind> {
     // -- io --------------------------------------------------------------
     out.push(
         NodeKind::new("api_request", "io", "API request")
+            // The HttpClient result -- support/clients.rs:127-129 inserts
+            // status / headers / body, and the executor returns it unchanged.
+            .output_shape(
+                [
+                    OutputField::new("status", "number").describe("HTTP status code."),
+                    OutputField::new("headers", "object").describe("Response headers."),
+                    OutputField::new("body", "unknown").describe("Parsed response body."),
+                ]
+                .into_iter()
+                .collect(),
+            )
             .describe("An HTTP request to any URL.")
             .inputs(ports(&["in"]))
             .outputs(ports(&["out"]))
