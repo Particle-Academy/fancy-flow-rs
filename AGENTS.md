@@ -50,6 +50,8 @@ never had to think about:
 - `nodes/` — the default executors by domain, plus `nodes/support/` (injectable
   client traits, offline fakes, the `{{ }}` resolver).
 - `capabilities.rs` — the HOST seam: `LlmClient` and `WorkflowResolver`.
+- `analysis/` — static analyses over a graph: `graph_connectivity`
+  (floating nodes, edges out of a terminator), decidable without running it.
 - `security.rs` — `GraphPolicy`, for a graph that arrived over the wire.
 - `marketplace.rs` — node-manifest validation and `satisfies_range`.
 
@@ -179,9 +181,23 @@ conformance checkout is somewhere unusual.
 
 ## Status
 
-**0.1.0 — core parity, built and green, unpublished.** 46 tests, **none
-ignored**: 85 shared conformance cases across four tables, plus the invariant,
-policy and schema suites and three doctests.
+**0.1.0 — core parity, built and green, unpublished.** 74 tests, **none
+ignored**: 104 shared conformance cases across FIVE tables — `shared/expr` (20),
+`shared/satisfies-range` (17), `shared/flow-run-identity` (25),
+`flow/kind-declaration-surface` (19, 1 skipped) and `flow/graph-runs` (23) —
+plus the invariant, policy, schema and graph-connectivity suites and three
+doctests.
+
+Counted from the run, not carried forward. The previous line said "85 across
+four tables" while the fifth was not being counted at all.
+
+**A stale local `Cargo.lock` makes the conformance suite look broken.**
+`fancy-conformance` is `branch = "main"` with no version and the lock is
+gitignored, so a fresh clone resolves to the latest commit — but a working copy
+whose lock predates a new shared table fails with `the shared suite must load
+... NotFound`. That is not a repo defect and `cargo update -p fancy-conformance`
+fixes it. The trade is real though: two machines can be asserting against
+different revisions of the tables that exist to make the runtimes agree.
 
 **No doc example is `ignore`d, and none may be.** The README is compiled because
 a README that does not compile is one that stopped being true and nothing else

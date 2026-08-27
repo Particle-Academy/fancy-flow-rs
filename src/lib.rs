@@ -43,6 +43,7 @@ extern crate std;
 #[doc = include_str!("../README.md")]
 struct Readme;
 
+pub mod analysis;
 pub mod capabilities;
 pub mod engine;
 pub mod error;

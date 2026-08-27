@@ -11,6 +11,7 @@ use alloc::vec::Vec;
 
 use fancy_json::{Map, Value};
 
+use crate::analysis::check_graph_connectivity;
 use crate::registry::NodeKindRegistry;
 use crate::schema::{
     string_at, FlowEdge, FlowGraph, FlowNode, ImportIssue, ImportResult, PortDescriptor, Severity,
@@ -188,6 +189,17 @@ pub fn import_workflow(
             label: string_at(raw, "label"),
         });
     }
+
+    // WIRING, not merely dataflow: a node no edge reaches and that reaches no
+    // edge, and an edge reading from a node that publishes nothing.
+    //
+    // Deliberately AFTER the edge loop, so it sees the same edges the engine
+    // will -- a dangling edge is dropped with a warning above, and running this
+    // first would let a dropped edge count as a connection.
+    //
+    // Deliberately NOT gated on `lenient`. That flag is about unknown
+    // VOCABULARY (a kind this host has not registered), never about wiring.
+    issues.extend(check_graph_connectivity(&nodes, &edges, registry));
 
     let ok = !issues.iter().any(ImportIssue::is_error);
     ImportResult {
