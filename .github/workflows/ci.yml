@@ -23,7 +23,7 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
-      # The four shared conformance tables run HERE, on every push and PR --
+      # The five shared conformance tables run HERE, on every push and PR --
       # rule 1 of fancy-conformance's runners/README.md. Not nightly, not at
       # release. A missing checkout is a failure, never a skip: the loader
       # returns an error rather than falling back, so the job goes red.

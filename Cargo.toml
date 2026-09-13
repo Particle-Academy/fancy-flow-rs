@@ -26,7 +26,14 @@ exclude = ["/.github"]
 fancy-json = { version = "0.1", default-features = false, git = "https://github.com/Particle-Academy/fancy-json-rs", branch = "main" }
 
 [dev-dependencies]
-fancy-conformance = { git = "https://github.com/Particle-Academy/fancy-conformance", branch = "main" }
+# The TAG the conformance tests pin (PINNED_SUITE_VERSION in
+# tests/conformance.rs), never `branch = "main"`. `Cargo.lock` is not tracked --
+# this is a library -- so a branch meant every fresh clone and every CI run
+# resolved whatever `main` was that day, and two machines could assert against
+# different revisions of the tables that exist to make the runtimes agree. The
+# tag is what pins. Move it and the constant together, only after re-running
+# the tables; `cargo_pulls_the_fixture_tag_this_suite_pins` fails otherwise.
+fancy-conformance = { git = "https://github.com/Particle-Academy/fancy-conformance", tag = "v0.22.0" }
 
 [features]
 default = ["std"]

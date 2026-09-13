@@ -133,7 +133,7 @@ Each has a doc comment at the point of divergence.
 
 ## Parity is a test result, not a claim
 
-`tests/conformance.rs` and `tests/graph_runs.rs` run **four** shared tables from
+`tests/conformance.rs` and `tests/graph_runs.rs` run **five** shared tables from
 `particle-academy/fancy-conformance`, through its Rust loader. **Never
 transcribe rows into this repo** — `satisfiesRange` was asserted against a
 hand-copied duplicate until someone added a row to one copy and nothing
@@ -181,8 +181,9 @@ conformance checkout is somewhere unusual.
 
 ## Status
 
-**0.1.0 — core parity, built and green, unpublished.** 74 tests, **none
-ignored**: 104 shared conformance cases across FIVE tables — `shared/expr` (20),
+**0.1.0 — core parity, built and green, unpublished.** 77 tests, **none
+ignored**: 104 shared conformance cases across FIVE tables, at fancy-conformance
+0.22.0 — `shared/expr` (20),
 `shared/satisfies-range` (17), `shared/flow-run-identity` (25),
 `flow/kind-declaration-surface` (19, 1 skipped) and `flow/graph-runs` (23) —
 plus the invariant, policy, schema and graph-connectivity suites and three
@@ -191,13 +192,25 @@ doctests.
 Counted from the run, not carried forward. The previous line said "85 across
 four tables" while the fifth was not being counted at all.
 
-**A stale local `Cargo.lock` makes the conformance suite look broken.**
-`fancy-conformance` is `branch = "main"` with no version and the lock is
-gitignored, so a fresh clone resolves to the latest commit — but a working copy
-whose lock predates a new shared table fails with `the shared suite must load
-... NotFound`. That is not a repo defect and `cargo update -p fancy-conformance`
-fixes it. The trade is real though: two machines can be asserting against
-different revisions of the tables that exist to make the runtimes agree.
+**The fixture set is pinned by a git TAG, because `Cargo.lock` is not
+tracked.** This is a library, so the lock stays gitignored and the dependency
+line is the only pin there is: `fancy-conformance` is `tag = "v0.22.0"`, and
+`tests/conformance.rs` holds the same version as `PINNED_SUITE_VERSION`. It was
+`branch = "main"` until 2026-09-13, which meant a fresh clone and every CI run
+resolved whatever `main` was that day — two machines could assert against
+different revisions of the tables that exist to make the runtimes agree, and a
+working copy whose lock predated a new table failed with `the shared suite must
+load ... NotFound`.
+
+Three tests hold it: `the_pinned_fixture_version_is_the_one_on_disk` prints
+and asserts the `VERSION` the loader actually read (rule 4 of the runners
+README, which honours `FANCY_CONFORMANCE_ROOT` too), and
+`cargo_pulls_the_fixture_tag_this_suite_pins` fails when `Cargo.toml` names a
+branch, a rev or a different tag. Its parser is plain text, since a TOML crate
+would be third-party audit surface for one assertion, so
+`the_manifest_parser_sees_a_branch_and_a_tag` tests the parser itself. **Moving the
+pin is a deliberate commit:** change the tag and the constant together, only
+after re-running every table against the new tag.
 
 **No doc example is `ignore`d, and none may be.** The README is compiled because
 a README that does not compile is one that stopped being true and nothing else

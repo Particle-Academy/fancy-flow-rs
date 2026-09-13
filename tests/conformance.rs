@@ -16,6 +16,97 @@ use fancy_flow::nodes::support::expr;
 use fancy_flow::registry::{builtin, EmitsRelation, NodeKindRegistry, OutputShape};
 use fancy_flow::RunIdentity;
 
+/// The fixture set every table in this crate runs against -- rule 4 of
+/// fancy-conformance's `runners/README.md`: print AND assert it.
+///
+/// Pinned at 0.22.0 on 2026-09-13, after re-running all five tables against the
+/// `v0.22.0` tag: `shared/satisfies-range` 17, `shared/expr` 20,
+/// `shared/flow-run-identity` 25, `flow/kind-declaration-surface` 19 (+1
+/// documented skip), `flow/graph-runs` 23 -- nothing failed. The same counts as
+/// 0.20.0, which is what `main` had resolved to before the pin.
+///
+/// `Cargo.toml` pulls `tag = "v<this>"`. Move the two together, and only after
+/// re-running the tables; `cargo_pulls_the_fixture_tag_this_suite_pins` fails
+/// otherwise. A pin that follows disk asserts nothing.
+const PINNED_SUITE_VERSION: &str = "0.22.0";
+
+#[test]
+fn the_pinned_fixture_version_is_the_one_on_disk() {
+    let on_disk = fancy_conformance::version()
+        .expect("the fixtures must load; a missing checkout is a FAILURE, not a skip");
+
+    // Printed unconditionally: "we are on an old fixture set" belongs in the
+    // log, not in someone's inference months later.
+    println!("fancy-conformance on disk: {on_disk}, pinned: {PINNED_SUITE_VERSION}");
+
+    assert_eq!(
+        on_disk, PINNED_SUITE_VERSION,
+        "fancy-conformance is at {on_disk}, this crate pins {PINNED_SUITE_VERSION}. \
+         Re-run the tables and move the pin deliberately."
+    );
+}
+
+/// The `git` source keys of the `fancy-conformance` dependency line in a
+/// `Cargo.toml`: `(tag, branch, rev)`. `None` when no such line exists.
+///
+/// Plain text on purpose -- a TOML parser would be a third-party crate for one
+/// assertion, and this crate's tree is audit surface. The dependency is an
+/// inline table on one line, which is how this manifest writes it.
+fn conformance_git_source(
+    manifest: &str,
+) -> Option<(Option<String>, Option<String>, Option<String>)> {
+    let line = manifest.lines().find(|line| {
+        let line = line.trim_start();
+        line.strip_prefix("fancy-conformance")
+            .is_some_and(|rest| rest.trim_start().starts_with('='))
+    })?;
+
+    let key = |name: &str| {
+        let (_, after) = line.split_once(&format!("{name} = \""))?;
+        after.split_once('"').map(|(value, _)| String::from(value))
+    };
+    Some((key("tag"), key("branch"), key("rev")))
+}
+
+#[test]
+fn the_manifest_parser_sees_a_branch_and_a_tag() {
+    // The parser is test-only code, and test-only code that is wrong makes the
+    // assertion below pass for the wrong reason.
+    let branch = "# fancy-conformance = { tag = \"v9\" }\n\
+                  fancy-conformance = { git = \"https://x\", branch = \"main\" }\n";
+    assert_eq!(
+        conformance_git_source(branch),
+        Some((None, Some(String::from("main")), None))
+    );
+
+    let tag = "fancy-json = { tag = \"v0.9.9\" }\n\
+               fancy-conformance = { git = \"https://x\", tag = \"v1.2.3\" }\n";
+    assert_eq!(
+        conformance_git_source(tag),
+        Some((Some(String::from("v1.2.3")), None, None))
+    );
+
+    assert_eq!(conformance_git_source("fancy-json = \"0.1\"\n"), None);
+}
+
+#[test]
+fn cargo_pulls_the_fixture_tag_this_suite_pins() {
+    // `Cargo.lock` is not tracked (this is a library), so the dependency line
+    // IS the pin. With `branch = "main"` every fresh clone and every CI run
+    // resolved whatever `main` was that day, and a fixture release could turn
+    // this build red for a reason no commit here caused.
+    let source = conformance_git_source(include_str!("../Cargo.toml"))
+        .expect("Cargo.toml declares no fancy-conformance dependency");
+
+    let expected = format!("v{PINNED_SUITE_VERSION}");
+    assert_eq!(
+        source,
+        (Some(expected.clone()), None, None),
+        "Cargo.toml must pull fancy-conformance at `tag = \"{expected}\"` and nothing else \
+         (found tag, branch, rev = {source:?}). Move the tag and PINNED_SUITE_VERSION together."
+    );
+}
+
 /// Print the summary unconditionally — rule 3 — then assert.
 fn expect_green(summary: &Summary, expected_cases: usize) {
     println!("{}", format_summary(summary));
