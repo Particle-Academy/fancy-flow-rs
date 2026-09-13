@@ -23,7 +23,7 @@ exclude = ["/.github"]
 # defaults -- so `no_std` would be a claim that compiles on a host (where std
 # exists) and fails on bare metal. Verified against thumbv7em-none-eabi, not
 # against the host.
-fancy-json = { version = "0.1", default-features = false, git = "https://github.com/Particle-Academy/fancy-json-rs", branch = "main" }
+fancy-json = { version = "0.1", default-features = false, git = "https://github.com/Particle-Academy/fancy-json-rs", tag = "v0.1.1" }
 
 [dev-dependencies]
 # The TAG the conformance tests pin (PINNED_SUITE_VERSION in
@@ -33,7 +33,7 @@ fancy-json = { version = "0.1", default-features = false, git = "https://github.
 # different revisions of the tables that exist to make the runtimes agree. The
 # tag is what pins. Move it and the constant together, only after re-running
 # the tables; `cargo_pulls_the_fixture_tag_this_suite_pins` fails otherwise.
-fancy-conformance = { git = "https://github.com/Particle-Academy/fancy-conformance", tag = "v0.22.0" }
+fancy-conformance = { git = "https://github.com/Particle-Academy/fancy-conformance", tag = "v0.22.1" }
 
 [features]
 default = ["std"]
