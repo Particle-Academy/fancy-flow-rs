@@ -27,8 +27,14 @@ jobs:
       # rule 1 of fancy-conformance's runners/README.md. Not nightly, not at
       # release. A missing checkout is a failure, never a skip: the loader
       # returns an error rather than falling back, so the job goes red.
+      #
+      # `--show-output`, because libtest CAPTURES a passing test's stdout. Rules
+      # 3 and 4 say print every summary (skips and their reasons) and the pinned
+      # fixture version, and until 2026-09-13 every one of those println!s was
+      # swallowed here: the log said "5 passed" and never which fixture set, or
+      # which row was skipped and why.
       - name: Test
-        run: cargo test --all-features
+        run: cargo test --all-features -- --show-output
 
       - name: Test (release)
         run: cargo test --release --all-features
