@@ -1,5 +1,7 @@
 # fancy-flow
 
+[![Fancified](art/fancified.svg)](https://particle.academy)
+
 Rust runtime for [`fancy-flow`](https://ui.particle.academy) workflow graphs —
 the framework-free twin of `@particle-academy/fancy-flow`'s TypeScript engine,
 of `particle-academy/fancy-flow-php`, and of `fancy-flow` on PyPI.
