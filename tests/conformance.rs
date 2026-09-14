@@ -27,10 +27,17 @@ use fancy_flow::RunIdentity;
 /// the loader in 0.22.0 took fancy-json from `main`, and two refs of one crate
 /// do not unify.
 ///
+/// Moved 0.22.1 -> 0.23.0 on 2026-09-14, in the same change as the
+/// fancy-flow-php#16 fix. 0.23.0 adds `shared/expr` 0021-0026 (a whole-string
+/// expression is exactly one `{{ }}`), so that table is now 26; before the fix
+/// in `whole_expression` this crate failed 0021, 0022, 0023, 0025 and 0026.
+/// No other row changed: every table was re-run against the `v0.23.0` tag and
+/// printed the other counts above, the one documented skip included.
+///
 /// `Cargo.toml` pulls `tag = "v<this>"`. Move the two together, and only after
 /// re-running the tables; `cargo_pulls_the_fixture_tag_this_suite_pins` fails
 /// otherwise. A pin that follows disk asserts nothing.
-const PINNED_SUITE_VERSION: &str = "0.22.1";
+const PINNED_SUITE_VERSION: &str = "0.23.0";
 
 #[test]
 fn the_pinned_fixture_version_is_the_one_on_disk() {
@@ -149,7 +156,8 @@ fn expression_resolution_matches_every_peer() {
     })
     .expect("the shared suite must load; a missing checkout is a FAILURE, not a skip");
 
-    expect_green(&summary, 20);
+    // 26 since fancy-conformance 0.23.0: 0021-0026 pin fancy-flow-php#16.
+    expect_green(&summary, 26);
 }
 
 #[test]

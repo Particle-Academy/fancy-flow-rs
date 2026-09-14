@@ -30,6 +30,31 @@ promising otherwise until 1.0.
 
   New: `fancy_flow::analysis::{check_graph_connectivity, may_float}`.
 
+### Fixed
+
+- **A template that starts with `{{` and ends with `}}` but holds more than one
+  reference evaluated to null** (fancy-flow-php#16). `expr::evaluate` read
+  `{{ in.text }} --- {{ user.transcript }}` as ONE path,
+  `in.text }} --- {{ user.transcript`, because `whole_expression` asked only
+  whether the trimmed template starts with `{{` and ends with `}}`. That path
+  never resolves, so a prompt, message or document template shaped like that
+  produced nothing, with every reference valid. `whole_expression` now also
+  requires the inner text to contain neither `}}` nor `{{`; anything else
+  interpolates each reference. `{{ a }}{{ b }}` is `"12"`. Its doc comment called
+  the corner deliberate and reproducing it the point, and all four runtimes did,
+  which is why no parity table saw it. fancy-flow-php 0.52.2, fancy-flow 0.70.4
+  and fancy-flow (Python) 0.20.2 carry the same fix.
+
+  **What to do:** nothing, unless something relied on such a template evaluating
+  to null. It now evaluates to the interpolated string. A single expression,
+  whitespace-padded or not, still returns its typed value.
+
+### Changed
+
+- **The conformance tests pin fancy-conformance `v0.23.0`** (was `v0.22.1`),
+  whose `shared/expr` 0021-0026 pin the fix above; that table is now 26 rows.
+  Every other table printed the same counts as before.
+
 ### Note (no code change)
 
 - **A stale local `Cargo.lock` can make the conformance suite look broken.**

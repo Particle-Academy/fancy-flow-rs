@@ -15,8 +15,7 @@
 //!
 //! * **Scanning, not a pattern.** The TypeScript twin was rewritten to
 //!   `indexOf` after two `CodeQL` `js/polynomial-redos` alerts, and the 2nd
-//!   survived the obvious pattern fix. Scanning is also the only way to
-//!   reproduce the peers' one odd corner exactly — see `whole_expression`.
+//!   survived the obvious pattern fix.
 //! * **Truthiness is PHP's, not the host language's.** `"0"`, `"false"` and
 //!   `[]` are all truthy in JavaScript and falsy here; a branch node reading a
 //!   form value or a JSON body hits every one of them.
@@ -28,17 +27,27 @@ use fancy_json::{Map, Number, Value};
 /// Strings the peer runtimes treat as false.
 const FALSY_STRINGS: [&str; 6] = ["", "0", "false", "no", "off", "null"];
 
-/// The inner text of a template that is exactly one expression, else `None`.
+/// The inner text of a template that is EXACTLY one expression, else `None`.
 ///
-/// Note the deliberate corner: `{{a}}{{b}}` is a WHOLE expression whose path is
-/// `a}}{{b` (which resolves to nothing), because the PHP pattern is end-anchored
-/// and its lazy capture has to grow to reach the end. Every peer runtime does
-/// this; reproducing it is the point.
+/// Starting with `{{` and ending with `}}` is not enough: the inner text may
+/// contain neither `}}` nor `{{`. Without that check
+/// `{{ in.text }} --- {{ user.transcript }}` was ONE path,
+/// `in.text }} --- {{ user.transcript`, that resolves to nothing, so the
+/// template evaluated to null (fancy-flow-php#16). That corner came from PHP's
+/// end-anchored pattern, whose lazy capture grew to reach the end. This comment
+/// used to call it deliberate and reproducing it the point; every runtime did
+/// reproduce it, which is why no parity table could see it. A template with
+/// several references now interpolates each, and `{{a}}{{b}}` is two
+/// references.
 fn whole_expression(trimmed: &str) -> Option<&str> {
     if trimmed.len() < 4 || !trimmed.starts_with("{{") || !trimmed.ends_with("}}") {
         return None;
     }
-    Some(&trimmed[2..trimmed.len() - 2])
+    let inner = &trimmed[2..trimmed.len() - 2];
+    if inner.contains("}}") || inner.contains("{{") {
+        return None;
+    }
+    Some(inner)
 }
 
 /// Replace every `{{ ... }}` run, left to right, in a single pass.
