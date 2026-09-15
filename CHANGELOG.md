@@ -127,9 +127,10 @@ promising otherwise until 1.0.
   resumed source, a duplicated declared port, an executor-emitted `node-output`
   and the field note, serialised byte-identically before and after, and
   `tests/run_diagnostics.rs` passes unchanged.
-- **The conformance tests pin fancy-conformance `v0.25.0`** (was `v0.24.0`),
-  which adds `flow/durable-dispatch`, run by `tests/durable_conformance.rs`. Every
-  existing table printed the same counts as at `v0.24.0`: `shared/satisfies-range`
+- **The conformance tests pin fancy-conformance `v0.26.0`** (was `v0.24.0`).
+  0.25.0 added `flow/durable-dispatch`, run by `tests/durable_conformance.rs`, and
+  0.26.0 lists this crate among its implementations. Every existing table printed
+  the same counts as at `v0.24.0`: `shared/satisfies-range`
   17, `shared/expr` 26, `shared/flow-run-identity` 25,
   `flow/kind-declaration-surface` 19 (+1 documented skip), `flow/graph-runs` 23,
   `flow/run-diagnostics` 14.

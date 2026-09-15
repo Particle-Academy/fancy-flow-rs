@@ -234,7 +234,7 @@ conformance checkout is somewhere unusual.
 
 **0.1.0 — core parity and the durable layer, built and green, unpublished.**
 150 tests, **none ignored** (145 `#[test]`s plus five doctests), at
-fancy-conformance 0.25.0: 175 shared conformance rows asserted across SEVEN
+fancy-conformance 0.26.0: 175 shared conformance rows asserted across SEVEN
 tables. Single-process: `shared/expr` (26), `shared/satisfies-range` (17),
 `shared/flow-run-identity` (25), `flow/kind-declaration-surface` (19, 1
 skipped), `flow/graph-runs` (23) and `flow/run-diagnostics` (14). Durable:
@@ -248,7 +248,7 @@ four tables" while the fifth was not being counted at all.
 
 **The fixture set is pinned by a git TAG, because `Cargo.lock` is not
 tracked.** This is a library, so the lock stays gitignored and the dependency
-line is the only pin there is: `fancy-conformance` is `tag = "v0.25.0"`, and
+line is the only pin there is: `fancy-conformance` is `tag = "v0.26.0"`, and
 `tests/conformance.rs` holds the same version as `PINNED_SUITE_VERSION`. It was
 `branch = "main"` until 2026-09-13, which meant a fresh clone and every CI run
 resolved whatever `main` was that day — two machines could assert against
