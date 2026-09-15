@@ -9,7 +9,7 @@ use alloc::vec::Vec;
 use fancy_json::{Map, Value};
 
 use crate::error::RunAborted;
-use crate::nodes::support::expr;
+use crate::nodes::support::{expr, routing_diagnostics};
 use crate::runtime::{ExecutionContext, LogLevel, Port, RunEvent};
 
 /// `branch` — two ports, exactly one taken.
@@ -29,6 +29,12 @@ pub fn branch(ctx: &mut ExecutionContext<'_>) -> Result<Value, RunAborted> {
     } else {
         "false"
     };
+
+    // A condition that did not RESOLVE is falsy, so the run takes `false`
+    // silently and for the wrong reason. Routing is unchanged; the reason is
+    // now visible.
+    routing_diagnostics::warn_if_unresolved(ctx, "condition", port);
+
     Ok(Port::branch(port, ctx.input_or_all()))
 }
 
@@ -51,6 +57,11 @@ pub fn switch_case(ctx: &mut ExecutionContext<'_>) -> Result<Value, RunAborted> 
         .and_then(Value::as_str)
         .unwrap_or("default")
         .to_string();
+
+    // The same silent mis-route as `branch`, one step over: a `value` that does
+    // not resolve becomes "", matches no case, and falls to `default` --
+    // indistinguishable from a value that genuinely matched nothing.
+    routing_diagnostics::warn_if_unresolved(ctx, "value", &port);
 
     Ok(Port::only(&port, ctx.input_or_all()))
 }

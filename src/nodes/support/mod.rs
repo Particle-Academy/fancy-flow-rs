@@ -2,6 +2,7 @@
 
 pub mod clients;
 pub mod expr;
+pub mod routing_diagnostics;
 
 pub use clients::{
     CompletionClient, EchoCompletionClient, EchoHttpClient, EchoToolClient, EmptyVectorStore,

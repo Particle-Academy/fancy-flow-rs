@@ -145,6 +145,14 @@ and the built-in offline executors — and the registry is NOT handed to
 `FlowRunner`.** Handing it over gives `for_each` its `item`/`done` ports from
 the kind fallback and disagrees on a case nobody changed.
 
+`flow/run-diagnostics` (`tests/run_diagnostics.rs`) is the one table that DOES
+hand the registry to the runner, and must: its warnings name the ports a source
+published, and PHP's runner always has a catalogue, so its `for_each` publishes
+`item`/`done`. Run without one, row 0012 fails on "Available: out" and nothing
+else changes. The possible-ports lookup behind the undelivered-edge warning
+falls back to the built-in catalogue when the runner has none; port activation
+does not, and must not start to.
+
 A missing conformance checkout is a **failure**, never a skip.
 
 ## Traps

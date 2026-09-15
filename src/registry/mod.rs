@@ -3,6 +3,7 @@
 pub mod builtin;
 pub mod kind_id;
 mod node_kind;
+mod port_resolution;
 
 use alloc::collections::BTreeMap;
 use alloc::string::String;
@@ -15,6 +16,7 @@ use fancy_json::{Map, Value};
 // would write -- the same defect the TypeScript twin shipped, where `OutputField`
 // was declared by an entry and never exported from it.
 pub use node_kind::{ConfigField, EmitsRelation, NodeKind, OutputField, OutputShape};
+pub use port_resolution::possible_ports;
 
 /// A problem with one config key.
 #[derive(Debug, Clone, PartialEq, Eq)]

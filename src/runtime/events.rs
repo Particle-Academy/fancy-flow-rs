@@ -176,6 +176,23 @@ impl RunEvent {
         event
     }
 
+    /// Something to say on the feed, with structured detail beside the prose.
+    ///
+    /// For a diagnostic a host will wire into its own tooling: it should not
+    /// have to parse the sentence back apart to learn which edge or path it
+    /// names.
+    #[must_use]
+    pub fn log_with_detail(
+        level: LogLevel,
+        message: &str,
+        node_id: Option<&str>,
+        detail: Value,
+    ) -> Self {
+        let mut event = Self::log(level, message, node_id);
+        event.detail = Some(detail);
+        event
+    }
+
     /// The run finished.
     #[must_use]
     pub fn run_end(ok: bool) -> Self {

@@ -30,6 +30,38 @@ promising otherwise until 1.0.
 
   New: `fancy_flow::analysis::{check_graph_connectivity, may_float}`.
 
+- **A graph that runs and delivers nothing now says so: two run-time `warn`
+  log events** (fancy-flow#17). fancy-flow-php already emitted both; this crate,
+  Node and Python ran the identical graph, reported success and said nothing.
+  Pinned on every runtime by fancy-conformance's `flow/run-diagnostics` table
+  (14 rows, 8 of them deliberately silent), whose messages and `detail` objects
+  this crate now reproduces exactly.
+
+  1. **Undelivered edge.** An edge whose source COMPLETED, whose port was not
+     published, and whose `sourceHandle` (default `out`) is not among the ports
+     that source could POSSIBLY publish. Reported against the TARGET node, with
+     detail `{ edge, source, sourceHandle }`; the message lists what the source
+     did publish, names a handle that is really one of the source's output
+     FIELDS, and suggests leaving `sourceHandle` off when there is one. An
+     untaken branch port is possible, so ordinary branching never warns.
+  2. **Route taken on an unresolved path.** `branch` (`condition`) or
+     `switch_case` (`value`) holding a single whole `{{ path }}` that does not
+     resolve against the node's inputs. Reported against that node, with detail
+     `{ node, configKey, path, tookPort }`. A path that resolves to null is
+     resolved, and is silent.
+
+  "Possible" follows PHP's precedence: the node's declared `outputs`, then ports
+  derived from config (`switch_case` cases plus `default`, `llm_router` routes
+  plus `fallback`, `subflow` + `stream` in the streaming modes), then the kind's
+  ports, then `out`. A runner holding no catalogue asks the built-in one, so
+  `FlowRunner::new()` does not call an untaken `false` impossible.
+
+  New: `RunEvent::log_with_detail`, `registry::possible_ports`, and
+  `nodes::support::routing_diagnostics::warn_if_unresolved`.
+
+  **What you must do:** nothing. Routing is unchanged, and the warnings are
+  extra `log` events that appear only on graphs that have one of these defects.
+
 ### Fixed
 
 - **A template that starts with `{{` and ends with `}}` but holds more than one
@@ -54,6 +86,10 @@ promising otherwise until 1.0.
 - **The conformance tests pin fancy-conformance `v0.23.0`** (was `v0.22.1`),
   whose `shared/expr` 0021-0026 pin the fix above; that table is now 26 rows.
   Every other table printed the same counts as before.
+- **The conformance tests pin fancy-conformance `v0.24.0`** (was `v0.23.0`),
+  which adds `flow/run-diagnostics` for the warnings above, run by
+  `tests/run_diagnostics.rs`. Before the warnings this crate failed its six
+  warning rows. Every existing table printed the same counts as at `v0.23.0`.
 
 ### Note (no code change)
 

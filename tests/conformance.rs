@@ -34,10 +34,16 @@ use fancy_flow::RunIdentity;
 /// No other row changed: every table was re-run against the `v0.23.0` tag and
 /// printed the other counts above, the one documented skip included.
 ///
+/// Moved 0.23.0 -> 0.24.0 on 2026-09-14, in the same change as the fancy-flow#17
+/// warnings. 0.24.0 adds `flow/run-diagnostics` (14 rows, run by
+/// `tests/run_diagnostics.rs`); before the warnings existed this crate failed
+/// its six warning rows and passed the eight silent ones. No existing row
+/// changed.
+///
 /// `Cargo.toml` pulls `tag = "v<this>"`. Move the two together, and only after
 /// re-running the tables; `cargo_pulls_the_fixture_tag_this_suite_pins` fails
 /// otherwise. A pin that follows disk asserts nothing.
-const PINNED_SUITE_VERSION: &str = "0.23.0";
+const PINNED_SUITE_VERSION: &str = "0.24.0";
 
 #[test]
 fn the_pinned_fixture_version_is_the_one_on_disk() {

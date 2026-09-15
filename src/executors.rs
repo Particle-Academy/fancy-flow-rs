@@ -105,6 +105,11 @@ impl ExecutorRegistry {
         self
     }
 
+    /// The kind catalogue handed to [`with_kinds`](Self::with_kinds), if any.
+    pub(crate) fn kinds(&self) -> Option<&NodeKindRegistry> {
+        self.kinds.as_deref()
+    }
+
     /// Bind an executor to a node kind, or to the `*` fallback.
     ///
     /// **Alias-aware for kinds this registry knows.** Binding `user_input`
