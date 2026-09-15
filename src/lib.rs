@@ -45,6 +45,7 @@ struct Readme;
 
 pub mod analysis;
 pub mod capabilities;
+pub mod durable;
 pub mod engine;
 pub mod error;
 pub mod executors;

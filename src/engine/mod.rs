@@ -17,6 +17,7 @@
 //! re-deriving them; a second copy of a routing table is the kind of duplicate
 //! that agrees for a year and then disagrees on one branch.
 
+pub(crate) mod undelivered_edges;
 mod walk;
 
 pub use walk::{Outcome, Step, Walk};

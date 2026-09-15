@@ -12,6 +12,58 @@ promising otherwise until 1.0.
 
 ### Added
 
+- **A durable, per-node coordinator: `fancy_flow::durable`, serial by default**
+  (fancy-flow-php#17). The port of fancy-flow-py's `fancy_flow.durable`, of
+  `@particle-academy/fancy-flow`'s `src/durable/`, and of fancy-flow-php's
+  `per_node` driver; Rust was the one runtime with no durable layer.
+
+  - `NodeClaimStore` (six `&self` operations) and `InMemoryClaimStore`. A claim
+    is won exactly once and a lost race is a no-op; an owner re-enters its own
+    claim, paused ones included; `skip` settles once and reports whether THIS
+    call settled it; `release` drops a paused row.
+  - `Frontier` (ready nodes and the skip cascade, restated from the engine's
+    rule), `select_dispatch` with `UNLIMITED_CONCURRENCY` / `check_max_concurrent`,
+    `replay_up_to` with `FENCE_PORT`, `RetryPolicy`, and the pausing human gates
+    `DurableUserInput` / `DurableApproval` over shared `Submissions`
+    (`NotAwaitingHuman` when an answer names a node the run is not parked on).
+  - `Coordinator`: `advance()` settles the frontier's skips, delivers each skipped
+    node's undelivered-edge warnings exactly once, then selects against the
+    post-skip state; `run_node(node_id, owner)` claims, replays through
+    `FlowRunner::run` with completed outputs resumed and every other node fenced
+    by `bind_node` on a forked registry, and checkpoints the output with the
+    ENGINE's ports, or pauses, skips or fails. A retryable failure leaves the
+    claim CLAIMED for the same owner. `run_to_completion` defaults to
+    `max(10_000, nodes + 1)` passes, returns on a pause, and reports outputs in
+    graph node order. Each attempt runs under a `RunIdentity` off the claim row,
+    so the step key is the same across a retry.
+
+  **What it pins.** `max_concurrent` defaults to `1`; `0` is the whole ready
+  frontier; a negative limit is refused by name where it is set. Held means
+  CLAIMED or PAUSED, so a paused gate keeps its slot. Human gates fail closed:
+  only an answer recorded for that node satisfies one, never a pre-filled input,
+  unless the node opts in with `autoAnswerFromInput`. `unsafe-to-replay` is
+  pinned to one attempt, retries are counted per kind id under every id the kind
+  answers to, and backoff is reported, never slept. The replay walks past fences
+  instead of aborting, so a sibling dispatched out of topological order runs
+  rather than being recorded skipped.
+
+  **The determinism choices, which the peers do not make.** `first_attempt_at` is
+  stamped from an INJECTED `Clock` (i64 milliseconds) on a node's first claim and
+  never refreshed on a re-claim: the retry clock is the first attempt, not the
+  latest claim. A row no attempt started carries `None`, not an invented
+  timestamp. Owner tokens are never random: `run_node` takes the caller's token,
+  because only the caller can make one unique across workers, and
+  `run_to_completion` mints `"{run_key}:{node_id}:{n}"` from a per-coordinator
+  counter. Backoff is integer milliseconds (`backoff_ms`) where the peers carry
+  float seconds.
+
+  Pinned by `flow/durable-dispatch` (14/14, over this crate's own frontier and
+  selection), `flow/run-diagnostics` driven through the coordinator (14/14), and a
+  parity test running every `flow/graph-runs` golden durably and single-process
+  (23/23 agree, 21 of them comparing outputs).
+
+  **What you must do:** nothing. It is a new module; the engine is unchanged.
+
 - **`import_workflow` refuses a graph containing a node that cannot take part in
   it.** The fourth and last runtime to get this rule — PHP 0.48, TypeScript
   0.64, Python 0.16 — so all four now agree on what a valid graph is.
@@ -62,6 +114,33 @@ promising otherwise until 1.0.
   **What you must do:** nothing. Routing is unchanged, and the warnings are
   extra `log` events that appear only on graphs that have one of these defects.
 
+### Changed
+
+- **The undelivered-edge rule moved out of `Walk` into
+  `engine::undelivered_edges`**, one crate-private function that both the walk
+  and the durable coordinator call, as TypeScript's `undeliveredEdgeWarnings`,
+  PHP's `UndeliveredEdges::warnings` and Python's `undelivered_edge_warnings` do.
+  The walk answers it from its own bookkeeping and the coordinator from the ports
+  stored on its claim rows. **No behaviour change:** every `warn` event of every
+  `flow/run-diagnostics`, `flow/graph-runs` and `flow/durable-dispatch` graph --
+  with and without a catalogue at the runner -- plus hand graphs covering a
+  resumed source, a duplicated declared port, an executor-emitted `node-output`
+  and the field note, serialised byte-identically before and after, and
+  `tests/run_diagnostics.rs` passes unchanged.
+- **The conformance tests pin fancy-conformance `v0.25.0`** (was `v0.24.0`),
+  which adds `flow/durable-dispatch`, run by `tests/durable_conformance.rs`. Every
+  existing table printed the same counts as at `v0.24.0`: `shared/satisfies-range`
+  17, `shared/expr` 26, `shared/flow-run-identity` 25,
+  `flow/kind-declaration-surface` 19 (+1 documented skip), `flow/graph-runs` 23,
+  `flow/run-diagnostics` 14.
+- **The conformance tests pin fancy-conformance `v0.23.0`** (was `v0.22.1`),
+  whose `shared/expr` 0021-0026 pin the fix above; that table is now 26 rows.
+  Every other table printed the same counts as before.
+- **The conformance tests pin fancy-conformance `v0.24.0`** (was `v0.23.0`),
+  which adds `flow/run-diagnostics` for the warnings above, run by
+  `tests/run_diagnostics.rs`. Before the warnings this crate failed its six
+  warning rows. Every existing table printed the same counts as at `v0.23.0`.
+
 ### Fixed
 
 - **A template that starts with `{{` and ends with `}}` but holds more than one
@@ -80,16 +159,6 @@ promising otherwise until 1.0.
   **What to do:** nothing, unless something relied on such a template evaluating
   to null. It now evaluates to the interpolated string. A single expression,
   whitespace-padded or not, still returns its typed value.
-
-### Changed
-
-- **The conformance tests pin fancy-conformance `v0.23.0`** (was `v0.22.1`),
-  whose `shared/expr` 0021-0026 pin the fix above; that table is now 26 rows.
-  Every other table printed the same counts as before.
-- **The conformance tests pin fancy-conformance `v0.24.0`** (was `v0.23.0`),
-  which adds `flow/run-diagnostics` for the warnings above, run by
-  `tests/run_diagnostics.rs`. Before the warnings this crate failed its six
-  warning rows. Every existing table printed the same counts as at `v0.23.0`.
 
 ### Note (no code change)
 

@@ -33,7 +33,7 @@ fancy-json = { version = "0.1", default-features = false, git = "https://github.
 # different revisions of the tables that exist to make the runtimes agree. The
 # tag is what pins. Move it and the constant together, only after re-running
 # the tables; `cargo_pulls_the_fixture_tag_this_suite_pins` fails otherwise.
-fancy-conformance = { git = "https://github.com/Particle-Academy/fancy-conformance", tag = "v0.24.0" }
+fancy-conformance = { git = "https://github.com/Particle-Academy/fancy-conformance", tag = "v0.25.0" }
 
 [features]
 default = ["std"]

@@ -59,15 +59,19 @@ Exactly as the other three do. No float touches a value.
 
 ## Parity is a test result, not a README claim
 
-Four shared fixture tables from
+Seven shared fixture tables from
 [`particle-academy/fancy-conformance`](https://github.com/Particle-Academy/fancy-conformance),
-loaded through its runner — **never transcribed into this repo**:
+loaded through its runner — **never transcribed into this repo**. Two of them are
+also driven through the durable coordinator:
 
 | suite | cases | what it pins |
 |---|---|---|
-| `flow/graph-runs` | 23 | whole-graph execution: the same document in, the same outputs out |
+| `flow/graph-runs` | 23 | whole-graph execution: the same document in, the same outputs out. Also run through `Coordinator::run_to_completion`, which must agree with the single-process run on every row |
+| `flow/run-diagnostics` | 14 | the warnings for a graph that delivers nothing. Also run through the coordinator, where a skipped node's warning is delivered at the skip |
+| `flow/durable-dispatch` | 14 | a queued run hands out one node at a time by default; a paused gate keeps its slot |
+| `flow/kind-declaration-surface` | 19 (+1 skipped, with its reason) | what a node kind declares |
 | `shared/flow-run-identity` | 25 | the idempotency key a retrying connector sends, and when a retry may reuse it |
-| `shared/expr` | 20 | `{{ }}` dot-path resolution and branch truthiness |
+| `shared/expr` | 26 | `{{ }}` dot-path resolution and branch truthiness |
 | `shared/satisfies-range` | 17 | minimal semver range matching |
 
 A divergence is a red build in whichever runtime drifted, not a support ticket
@@ -87,6 +91,85 @@ including one that had been hiding in a peer for two releases.
   human gate pauses through the same channel, and the durable layer decodes an
   encoded payload back out of it. Nothing decorates it.
 - **An unregistered kind fails closed**, loudly.
+
+## Durable runs, one node at a time
+
+`fancy_flow::durable` checkpoints a run **per node, keyed by node id**, so it
+survives a crash, a deploy or a person taking a week to approve something. It is
+the port of the durable layers in the Python and TypeScript twins and of
+fancy-flow-php's `per_node` driver, and it runs the graph through the **same
+walk** as `FlowRunner` — completed nodes are republished, every other node is
+fenced off, and the engine decides the inputs and the ports. A queue adapter
+supplies transport and nothing else.
+
+```rust
+use std::rc::Rc;
+
+use fancy_flow::durable::{Coordinator, DurableApproval, InMemoryClaimStore, Submissions};
+use fancy_flow::executors::executor;
+use fancy_flow::{ExecutorRegistry, FixedClock, FlowEdge, FlowGraph, FlowNode, RunIdentity};
+use fancy_json::Value;
+
+let graph = FlowGraph {
+    nodes: vec![
+        FlowNode::new("draft", "step"),
+        FlowNode::new("approve", "human_approval"),
+        FlowNode::new("send", "step"),
+    ],
+    edges: vec![
+        FlowEdge::new("e1", "draft", "approve"),
+        FlowEdge::new("e2", "approve", "send").from_port("approved"),
+    ],
+};
+
+let submissions = Submissions::shared();
+let mut executors = ExecutorRegistry::new();
+executors
+    .bind("step", executor(|ctx| Ok(Value::from(ctx.node().id.as_str()))))
+    .bind("human_approval", Rc::new(DurableApproval::new(Rc::clone(&submissions))));
+
+let store = InMemoryClaimStore::new(); // a database implements `NodeClaimStore`
+let clock = FixedClock::new(1_767_225_600_000); // block time, never the wall clock
+let coordinator = || {
+    Coordinator::new(&graph, &executors, RunIdentity::new("invoice-7", 0), &clock)
+        .with_store(&store)
+};
+
+// Serial by default, and the gate PAUSES: it is never walked past.
+let parked = coordinator().run_to_completion(None);
+assert_eq!(parked.pause.map(|pause| pause.node_id), Some("approve".to_string()));
+
+// A person answers; release the parked row and drive the run on.
+submissions.borrow_mut().record("approve", Value::Bool(true))?;
+store.release("invoice-7", "approve");
+
+let finished = coordinator().run_to_completion(None);
+assert!(finished.ok);
+assert_eq!(finished.outputs.get("send"), Some(&Value::from("send")));
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+- **Serial is the default.** `advance()` hands out one node, and the next only
+  once it has settled, in declaration order. `with_max_concurrent(n)` raises the
+  cap; `UNLIMITED_CONCURRENCY` (`0`) hands out the whole ready frontier; a
+  negative limit is refused where it is set. A paused gate keeps its slot.
+- **A claim is a unique constraint.** Two workers racing for one node produce one
+  execution and one no-op. A retry re-enters its own claim with the same owner
+  token, so the idempotency key its connector sends does not change.
+- **`unsafe-to-replay` gets one attempt**, whatever the `RetryPolicy` says.
+  Backoff is reported, never slept.
+- **Human gates fail closed.** `DurableUserInput` and `DurableApproval` pause
+  because they ARE human nodes; a pre-filled input never satisfies one, only an
+  answer recorded for that node does.
+- **Determinism.** `first_attempt_at` is stamped from the injected `Clock` on a
+  node's first claim and never moved. Owner tokens are never random:
+  `run_node(node_id, owner)` takes the worker's token, and `run_to_completion`
+  counts its own.
+
+Three more shared tables pin it: `flow/durable-dispatch` (14) over this crate's
+own frontier and dispatch selection, `flow/run-diagnostics` (14) driven through
+the coordinator, and every `flow/graph-runs` golden (23) run durably and compared
+with the single-process run.
 
 ## The kind field
 
@@ -112,10 +195,10 @@ registries, the built-in kinds and their deterministic executors, `{{ }}`,
 `Pause`, `RunIdentity`, the injected `Clock`, the capability traits,
 `GraphPolicy` and `satisfies_range`.
 
-**Not built:** the durable layer (claims, frontier, per-node replay, retries,
-human gates, coordinator) and an async driver. `Walk` is an explicit state
-machine precisely so both can drive the same walk rather than a second copy of
-the routing rules.
+**The durable layer is built** (claims, frontier, per-node replay, retries,
+human gates, a serial-by-default coordinator), unreleased. **Not built:** an
+async driver. `Walk` is an explicit state machine precisely so every driver
+drives the same walk rather than a second copy of the routing rules.
 
 ## License
 

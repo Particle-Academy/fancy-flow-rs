@@ -40,10 +40,19 @@ use fancy_flow::RunIdentity;
 /// its six warning rows and passed the eight silent ones. No existing row
 /// changed.
 ///
+/// Moved 0.24.0 -> 0.25.0 on 2026-09-14, in the same change as the durable
+/// coordinator. 0.25.0 adds `flow/durable-dispatch` (14 rows, run by
+/// `tests/durable_conformance.rs` over this crate's own `Frontier::compute` and
+/// `select_dispatch`, all passing). Every existing table was re-run against the
+/// `v0.25.0` tag and printed the counts above (expr 26, run-diagnostics 14), the
+/// one documented skip included. That manifest's notes still say Rust is not
+/// listed -- it was written before this crate had a coordinator -- which is a
+/// fixture-repo edit, not something this crate can change.
+///
 /// `Cargo.toml` pulls `tag = "v<this>"`. Move the two together, and only after
 /// re-running the tables; `cargo_pulls_the_fixture_tag_this_suite_pins` fails
 /// otherwise. A pin that follows disk asserts nothing.
-const PINNED_SUITE_VERSION: &str = "0.24.0";
+const PINNED_SUITE_VERSION: &str = "0.25.0";
 
 #[test]
 fn the_pinned_fixture_version_is_the_one_on_disk() {

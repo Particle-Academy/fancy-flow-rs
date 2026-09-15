@@ -15,14 +15,14 @@
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use core::cell::OnceCell;
 
 use fancy_json::{Map, Value};
 
+use super::undelivered_edges::{undelivered_edge_warnings, KindLookup, PublishedPorts};
 use crate::error::RunAborted;
 use crate::executors::{ExecutorRegistry, SharedExecutor};
-use crate::registry::{builtin, kind_id, possible_ports, NodeKind, NodeKindRegistry};
-use crate::runtime::{ExecutionContext, LogLevel, NodeStatus, RunEvent, RunOptions, RunResult};
+use crate::registry::{kind_id, NodeKindRegistry};
+use crate::runtime::{ExecutionContext, NodeStatus, RunEvent, RunOptions, RunResult};
 use crate::schema::{FlowEdge, FlowGraph, FlowNode};
 
 /// One unit of work the walk hands back to whichever driver is running it.
@@ -62,14 +62,15 @@ pub struct Walk<'a> {
     cursor: usize,
     state: State,
 
-    /// Node id -> index into `graph.nodes`. Built ONCE: it is used only to
-    /// explain an undelivered edge, and a scan per edge would make a diagnostic
-    /// quietly quadratic on the hot path.
-    node_index: BTreeMap<&'a str, usize>,
-    /// The built-in catalogue, built on first use. The kind lookup of last
-    /// resort, so that a runner holding no catalogue still knows a `branch` can
-    /// publish `false` -- see [`Walk::kind_of`].
-    builtin_kinds: OnceCell<NodeKindRegistry>,
+    /// Node id -> node. Built ONCE: it is used only to explain an undelivered
+    /// edge, and a scan per edge would make a diagnostic quietly quadratic on
+    /// the hot path.
+    nodes_by_id: BTreeMap<&'a str, &'a FlowNode>,
+    /// The kind lookup behind the undelivered-edge warning: the runner's
+    /// catalogue, the executor registry's, then the built-in one, so that a
+    /// runner holding no catalogue still knows a `branch` can publish `false`.
+    /// See [`KindLookup`].
+    kind_lookup: KindLookup<'a>,
 
     /// key: `"{node_id}:{port_id}"`.
     port_values: BTreeMap<String, Value>,
@@ -99,13 +100,12 @@ impl<'a> Walk<'a> {
             order: Vec::new(),
             cursor: 0,
             state: State::Walking,
-            node_index: graph
+            nodes_by_id: graph
                 .nodes
                 .iter()
-                .enumerate()
-                .map(|(index, node)| (node.id.as_str(), index))
+                .map(|node| (node.id.as_str(), node))
                 .collect(),
-            builtin_kinds: OnceCell::new(),
+            kind_lookup: KindLookup::new(kinds, executors.kinds()),
             port_values: BTreeMap::new(),
             outputs: BTreeMap::new(),
             events: Vec::new(),
@@ -452,156 +452,19 @@ impl<'a> Walk<'a> {
 
     /// Warn against `target` for each inbound edge that can never deliver.
     ///
-    /// Keyed on the source having COMPLETED, which is what separates the two
-    /// reasons a port can be absent. A branch that was not taken is ordinary
-    /// and must never warn; a source that finished and CANNOT publish this port
-    /// is a misconfiguration that will never work on any run.
-    ///
-    /// So the question is whether the port is POSSIBLE for the source, never
-    /// whether it was published: an untaken `false` and an impossible handle
-    /// are both absent, and asking "did it publish?" would warn on every
-    /// branching graph. A warning that fires on ordinary branching is noise,
-    /// and noise is how a real warning stops being read.
+    /// The rule is [`undelivered_edge_warnings`], shared with the durable
+    /// coordinator, which asks it for the nodes its frontier skips. This walk
+    /// answers its questions from its own bookkeeping -- see the
+    /// [`PublishedPorts`] impl below.
     fn warn_undelivered(&mut self, target: &FlowNode, incoming: &[&FlowEdge]) {
-        let mut warnings: Vec<RunEvent> = Vec::new();
-
-        for edge in incoming {
-            let handle = edge.source_port();
-
-            // `publish` records an output for exactly the nodes that finished,
-            // resumed ones included, so an output IS the completion record.
-            if self
-                .port_values
-                .contains_key(&port_key(&edge.source, handle))
-                || !self.outputs.contains_key(&edge.source)
-            {
-                continue;
-            }
-            let Some(&at) = self.node_index.get(edge.source.as_str()) else {
-                continue;
-            };
-
-            let source = self.node(at);
-            let kind = self.kind_of(source);
-            if possible_ports(source, kind)
-                .iter()
-                .any(|port| port == handle)
-            {
-                continue;
-            }
-
-            let mut detail = Map::new();
-            detail.insert("edge", Value::from(edge.id.as_str()));
-            detail.insert("source", Value::from(edge.source.as_str()));
-            detail.insert("sourceHandle", Value::from(handle));
-
-            warnings.push(RunEvent::log_with_detail(
-                LogLevel::Warn,
-                &self.undelivered_edge_message(edge, source, kind, target),
-                Some(&target.id),
-                Value::Object(detail),
-            ));
-        }
-
-        self.events.extend(warnings);
-    }
-
-    /// The warning's text: the edge, the consequence in run-time terms, what
-    /// the source DID publish, and the remedy for the common case.
-    fn undelivered_edge_message(
-        &self,
-        edge: &FlowEdge,
-        source: &FlowNode,
-        kind: Option<&NodeKind>,
-        target: &FlowNode,
-    ) -> String {
-        let handle = edge.source_port();
-        let mut message = alloc::format!(
-            "Edge {} reads port \"{handle}\" from node {}, which never publishes it \u{2014} \
-             nothing would reach {} at run time.",
-            edge.id,
-            source.id,
-            target.id,
+        let warnings = undelivered_edge_warnings(
+            target,
+            incoming,
+            &*self,
+            &self.nodes_by_id,
+            &self.kind_lookup,
         );
-
-        // In PUBLICATION order, so read off the `node-output` events: the keys
-        // of `port_values` are sorted, which would print `done, item` for a
-        // `for_each` that published `item` first.
-        let mut available: Vec<&str> = Vec::new();
-        for event in &self.events {
-            if event.kind != RunEvent::NODE_OUTPUT || event.node_id.as_deref() != Some(&source.id) {
-                continue;
-            }
-            if let Some(port) = event.port_id.as_deref() {
-                if !available.contains(&port) {
-                    available.push(port);
-                }
-            }
-        }
-        if !available.is_empty() {
-            message.push_str(" Available: ");
-            message.push_str(&available.join(", "));
-            message.push('.');
-        }
-
-        // The near-miss: a FIELD of that name where a PORT was expected, which
-        // is nearly always an agent reaching for a field. Naming it turns a
-        // correction into an explanation.
-        //
-        // A config-dependent shape (`OutputShape::Dynamic`) cannot be resolved
-        // in-process, so such a kind never gets the note here. PHP resolves it
-        // from config; the warning itself still fires on both.
-        let is_field = kind
-            .and_then(NodeKind::output_fields)
-            .is_some_and(|fields| fields.iter().any(|field| field.path == handle));
-        if is_field {
-            for part in [
-                " Note: \"",
-                handle,
-                "\" is a FIELD this node emits, not a port \u{2014} read it downstream as {{ in.",
-                handle,
-                " }} rather than naming it as a source handle.",
-            ] {
-                message.push_str(part);
-            }
-        }
-
-        // Only when there IS a handle to remove. A handle-less edge reads `out`,
-        // and advice that cannot be followed is worse than none.
-        if edge.source_handle.is_some() {
-            message.push_str(" Leave sourceHandle off to read the node's output.");
-        }
-
-        message
-    }
-
-    /// The kind declaration for a node, for the questions a run cannot answer
-    /// from its result alone.
-    ///
-    /// The runner's catalogue first, then the executor registry's, then the
-    /// built-in one. PHP always has a catalogue to ask -- its executor registry
-    /// falls back to the default registry -- while this crate's runner may hold
-    /// none at all; stopping there would call `false` impossible for every
-    /// `branch` run through [`FlowRunner::new`](crate::FlowRunner::new), and
-    /// warn on ordinary branching.
-    ///
-    /// Port ACTIVATION does not use this fallback and must not start to: which
-    /// ports a result lights up without a catalogue is pinned by
-    /// `flow/graph-runs`.
-    fn kind_of(&self, node: &FlowNode) -> Option<&NodeKind> {
-        let name = node.kind.as_deref()?;
-        self.kinds
-            .and_then(|kinds| kinds.get(name))
-            .or_else(|| self.executors.kinds().and_then(|kinds| kinds.get(name)))
-            .or_else(|| {
-                self.builtin_kinds
-                    .get_or_init(|| {
-                        let mut kinds = NodeKindRegistry::new();
-                        builtin::register(&mut kinds, true);
-                        kinds
-                    })
-                    .get(name)
-            })
+        self.events.extend(warnings);
     }
 
     // -- inputs ----------------------------------------------------------
@@ -660,6 +523,37 @@ impl<'a> Walk<'a> {
             crate::registry::category::ANNOTATION => Some("annotation"),
             _ => None,
         }
+    }
+}
+
+/// What the walk has recorded, for the undelivered-edge rule.
+impl PublishedPorts for Walk<'_> {
+    /// `publish` records an output for exactly the nodes that finished, resumed
+    /// ones included, so an output IS the completion record.
+    fn completed(&self, node_id: &str) -> bool {
+        self.outputs.contains_key(node_id)
+    }
+
+    fn published(&self, node_id: &str, port: &str) -> bool {
+        self.port_values.contains_key(&port_key(node_id, port))
+    }
+
+    /// Read off the `node-output` events: the keys of `port_values` are
+    /// sorted, which would print `done, item` for a `for_each` that published
+    /// `item` first.
+    fn in_publication_order(&self, node_id: &str) -> Vec<&str> {
+        let mut available: Vec<&str> = Vec::new();
+        for event in &self.events {
+            if event.kind != RunEvent::NODE_OUTPUT || event.node_id.as_deref() != Some(node_id) {
+                continue;
+            }
+            if let Some(port) = event.port_id.as_deref() {
+                if !available.contains(&port) {
+                    available.push(port);
+                }
+            }
+        }
+        available
     }
 }
 
