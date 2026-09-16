@@ -152,10 +152,13 @@ fn is_terminator(node: &FlowNode, registry: &NodeKindRegistry) -> bool {
     // said what this node publishes is believed -- the same way the engine
     // believes it.
     //
-    // Reachable only for a hand-built graph here: `import_workflow` drops
-    // node-level ports (as the PHP and Python twins do, and unlike the
-    // TypeScript one, which preserves them). A real divergence between the
-    // importers, recorded rather than smoothed over.
+    // Reachable through the IMPORTER as well as from a hand-built graph. It was
+    // hand-built only for as long as `import_workflow` dropped node-level ports;
+    // the note that stood here called that a real divergence from the TypeScript
+    // importer, "recorded rather than smoothed over", and it was a bug being
+    // documented as a contract. Now the declaration survives the import, so this
+    // analysis and the engine read the same field and cannot disagree about
+    // which nodes end a chain.
     if let Some(own) = node.outputs.as_ref() {
         return own.is_empty();
     }

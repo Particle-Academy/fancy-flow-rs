@@ -259,6 +259,101 @@ fn a_graph_survives_export_and_re_import() {
 }
 
 #[test]
+fn all_three_port_states_survive_export_and_re_import() {
+    // The three states have to survive export -> import, or the strict reading
+    // of an empty list is only strict until a graph is saved: exported as
+    // "absent", it comes back as the FALLBACK state and the node starts
+    // publishing `out` again. That is why the exporter guards on `Some` rather
+    // than on non-emptiness, and why the importer reads the key at all.
+    let document = r#"{"version":1,"graph":{
+        "nodes":[
+            {"id":"t","kind":"manual_trigger","position":{"x":0,"y":0}},
+            {"id":"a","kind":"transform","position":{"x":1,"y":0},
+             "outputs":[{"id":"done","label":"Done"},"extra",{"nope":1}]},
+            {"id":"b","kind":"transform","position":{"x":2,"y":0},"outputs":[]},
+            {"id":"c","kind":"transform","position":{"x":3,"y":0}}
+        ],
+        "edges":[
+            {"id":"e1","source":"t","target":"a"},
+            {"id":"e2","source":"a","target":"b","sourceHandle":"done"},
+            {"id":"e3","source":"a","target":"c","sourceHandle":"extra"}
+        ]}}"#;
+
+    let imported = import_json(document, true, &kinds()).unwrap();
+    assert!(imported.ok, "{:?}", imported.issues);
+
+    let ports = |id: &str| {
+        imported
+            .graph
+            .node(id)
+            .unwrap()
+            .outputs
+            .as_ref()
+            .map(|ports| {
+                ports
+                    .iter()
+                    .map(|port| port.id.as_str())
+                    .collect::<Vec<_>>()
+            })
+    };
+    // A bare string is the short form; `{"nope":1}` carries no id and is
+    // skipped rather than failing the import or becoming a phantom `out`.
+    assert_eq!(ports("a"), Some(vec!["done", "extra"]));
+    assert_eq!(ports("b"), Some(vec![]), "explicitly no ports");
+    assert_eq!(ports("c"), None, "not declared");
+
+    let text = to_json(&imported.graph, None);
+    let back = import_json(&text, true, &kinds()).unwrap();
+    assert!(back.ok, "{:?}", back.issues);
+
+    let round_tripped = |id: &str| {
+        back.graph.node(id).unwrap().outputs.as_ref().map(|ports| {
+            ports
+                .iter()
+                .map(|port| port.id.as_str())
+                .collect::<Vec<_>>()
+        })
+    };
+    assert_eq!(round_tripped("a"), Some(vec!["done", "extra"]));
+    assert_eq!(round_tripped("b"), Some(vec![]));
+    assert_eq!(round_tripped("c"), None);
+
+    // The label rides along, and the key for an undeclared list is ABSENT --
+    // read off the document rather than inferred from the re-import, since a
+    // present-but-empty key and a missing one both read back as `Some`/`None`
+    // only because the importer distinguishes them.
+    let exported = export_workflow(&imported.graph, None);
+    let nodes = exported
+        .get("graph")
+        .and_then(|graph| graph.get("nodes"))
+        .and_then(Value::as_array)
+        .unwrap();
+    let node_of = |id: &str| {
+        nodes
+            .iter()
+            .find(|node| node.get("id").and_then(Value::as_str) == Some(id))
+            .unwrap()
+    };
+    assert_eq!(
+        node_of("a")
+            .get("outputs")
+            .and_then(Value::as_array)
+            .and_then(|ports| ports.first())
+            .and_then(|port| port.get("label"))
+            .and_then(Value::as_str),
+        Some("Done")
+    );
+    assert!(
+        node_of("b")
+            .get("outputs")
+            .and_then(Value::as_array)
+            .is_some_and(Vec::is_empty),
+        "an empty list is WRITTEN, not omitted"
+    );
+    assert!(node_of("c").get("outputs").is_none());
+}
+
+#[test]
 fn an_exported_document_declares_the_schema_it_conforms_to() {
     let exported = export_workflow(&FlowGraph::new(), None);
     assert_eq!(exported.get("version").and_then(Value::as_i64), Some(1));

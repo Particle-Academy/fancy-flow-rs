@@ -464,11 +464,20 @@ impl<'a> Walk<'a> {
         if declared.is_none() {
             if let (Some(kinds), Some(kind_name)) = (self.kinds, node.kind.as_deref()) {
                 if let Some(kind) = kinds.get(kind_name) {
-                    // Only adopt NON-EMPTY kind ports. A terminal kind declares
-                    // an empty list, and consuming that literally would publish
-                    // zero ports where the historical fallback published `out`
-                    // — silently cutting every chain through such a node.
-                    if let Some(ports) = kind.outputs.as_ref().filter(|ports| !ports.is_empty()) {
+                    // The KIND's ports, INCLUDING an empty list. An empty one
+                    // was refused here until this change, because consuming it
+                    // literally publishes zero ports where the historical
+                    // fallback published `out` — and that silently cut every
+                    // chain through such a node.
+                    //
+                    // The protection is gone because the SILENCE is gone. An
+                    // edge leaving a node that published nothing now raises the
+                    // undelivered-edge warning, so a truncated chain announces
+                    // itself instead of being papered over with a port the node
+                    // never declared. Keeping the refusal as well would mean a
+                    // terminal kind could never actually terminate — and the
+                    // ruling was strict-but-loud, not lenient.
+                    if let Some(ports) = kind.outputs.as_ref() {
                         declared = Some(ports.iter().map(|p| p.id.clone()).collect());
                     }
                 }

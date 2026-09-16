@@ -7,7 +7,7 @@ use fancy_json::Value;
 
 use fancy_flow::executors::executor;
 use fancy_flow::nodes::support::ExecutorDeps;
-use fancy_flow::registry::builtin;
+use fancy_flow::registry::{builtin, NodeKind};
 use fancy_flow::runtime::{AbortSignal, FixedClock, LogLevel, NodeStatus, RunEvent};
 use fancy_flow::schema::PortDescriptor;
 use fancy_flow::{
@@ -148,6 +148,96 @@ fn declared_empty_outputs_publish_on_nothing_and_undeclared_fall_back_to_out() {
     let result = run(&graph, &executors);
     assert_eq!(result.activated_ports("t"), vec!["out"]);
     assert!(result.output("after").is_some());
+}
+
+/// A catalogue holding one terminal kind: an EMPTY output list, not an absent
+/// one. The distinction is the whole of the two tests below.
+fn terminal_kinds() -> NodeKindRegistry {
+    let mut kinds = NodeKindRegistry::new();
+    kinds.register(NodeKind::new("terminal", "output", "Terminal").outputs(Vec::new()));
+    kinds
+}
+
+fn warnings_of(result: &fancy_flow::RunResult) -> Vec<&RunEvent> {
+    result
+        .events
+        .iter()
+        .filter(|event| event.kind == RunEvent::LOG && event.level == Some(LogLevel::Warn))
+        .collect()
+}
+
+#[test]
+fn a_terminal_kind_publishes_nothing_and_the_truncated_edge_says_so() {
+    // A category-"output" kind declares an EMPTY port list, and that is now
+    // honoured literally when the NODE declares nothing: the chain ends here.
+    //
+    // The walk refused an empty kind declaration until this landed, because
+    // consuming it published zero ports where the fallback published `out` —
+    // and the alternative was a SILENT cut. So both halves are asserted, and
+    // asserting only the first would be the dangerous half: a test that checked
+    // nothing downstream ran would pass against an engine that truncates in
+    // silence, which is the exact behaviour the refusal existed to prevent. The
+    // strict reading is allowed only because it is also loud.
+    let kinds = terminal_kinds();
+    let graph = FlowGraph {
+        nodes: vec![FlowNode::new("t", "terminal"), FlowNode::new("n", "sink")],
+        edges: vec![FlowEdge::new("e1", "t", "n")],
+    };
+
+    let mut executors = ExecutorRegistry::new();
+    executors.bind("terminal", constant(Value::from("done")));
+    executors.bind("sink", constant(Value::from("ran")));
+
+    let result = FlowRunner::with_kinds(&kinds)
+        .run(&graph, &executors, &RunOptions::new())
+        .expect("not cancelled");
+
+    assert!(result.ok);
+    assert!(
+        result.activated_ports("t").is_empty(),
+        "an empty kind declaration is a declaration, not a gap to fill with `out`"
+    );
+    assert!(
+        result.output("n").is_none(),
+        "nothing downstream of a terminal node may run"
+    );
+
+    let warnings = warnings_of(&result);
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(
+        warnings[0]
+            .message
+            .as_deref()
+            .is_some_and(|text| text.starts_with("Edge e1 reads port \"out\" from node t")),
+        "{warnings:?}"
+    );
+    // Against the TARGET, because the target is the node an author will find
+    // sitting empty -- the same key the durable coordinator raises it under.
+    assert_eq!(warnings[0].node_id.as_deref(), Some("n"));
+}
+
+#[test]
+fn a_terminal_kind_with_nothing_downstream_stays_silent() {
+    // The other half, and the reason the warning is keyed on the EDGE rather
+    // than on publishing nothing: a terminal node at the end of a chain is the
+    // normal case and must not warn. A diagnostic that fires on correct graphs
+    // is how a real one stops being read.
+    let kinds = terminal_kinds();
+    let graph = FlowGraph {
+        nodes: vec![FlowNode::new("t", "terminal")],
+        edges: vec![],
+    };
+
+    let mut executors = ExecutorRegistry::new();
+    executors.bind("terminal", constant(Value::from("done")));
+
+    let result = FlowRunner::with_kinds(&kinds)
+        .run(&graph, &executors, &RunOptions::new())
+        .expect("not cancelled");
+
+    assert!(result.ok);
+    assert!(result.activated_ports("t").is_empty());
+    assert!(warnings_of(&result).is_empty(), "{:?}", result.events);
 }
 
 #[test]

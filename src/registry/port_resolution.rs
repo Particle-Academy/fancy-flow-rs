@@ -36,12 +36,14 @@ use crate::schema::FlowNode;
 /// 1. the NODE's own declared `outputs` — the document is more specific than
 ///    the kind;
 /// 2. the kind's CONFIG-DERIVED ports, for the three kinds that have them;
-/// 3. the kind's declared ports;
-/// 4. `out`.
+/// 3. the kind's declared ports, an EMPTY list included — a kind that declares
+///    no ports publishes none, and the warning below depends on that being
+///    reported honestly.
 ///
-/// An unregistered kind (`kind` is `None`) is NOT ambiguous, though it looks as
-/// though it should be: port activation falls back to exactly `out` for a kind
-/// it cannot resolve, so that is what such a node publishes.
+/// There is no `out` fallback past that point. An unregistered kind (`kind` is
+/// `None`) is the one case that still takes it, and it is NOT ambiguous though
+/// it looks as though it should be: port activation falls back to exactly `out`
+/// for a kind it cannot resolve, so that is what such a node publishes.
 #[must_use]
 pub fn possible_ports(node: &FlowNode, kind: Option<&NodeKind>) -> Vec<String> {
     if let Some(outputs) = &node.outputs {
@@ -69,9 +71,18 @@ pub fn possible_ports(node: &FlowNode, kind: Option<&NodeKind>) -> Vec<String> {
     if !derived.is_empty() {
         return derived;
     }
-    if declared.is_empty() {
-        return alloc::vec!["out".to_string()];
-    }
+
+    // An empty declaration means NO PORTS, and it has to mean that here as well
+    // as in the walk's port activation. This read
+    // `if declared.is_empty() { vec!["out"] }` until this change — the same
+    // empty-to-`out` collapse the walk used to make, in the other of the two
+    // gates that shape a port set.
+    //
+    // Fixing only the walk would have been half a fix, and the dangerous half:
+    // the node would publish nothing while this lookup still reported `out` as
+    // deliverable, so the undelivered-edge warning would stay SILENT for
+    // exactly the edge that had just stopped delivering. The ruling was
+    // strict-but-LOUD, and the loudness lives here.
     declared
 }
 

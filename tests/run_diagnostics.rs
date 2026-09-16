@@ -240,9 +240,13 @@ fn possible_ports_reads_config_for_the_kinds_that_derive_ports_from_it() {
     // The node's own declaration outranks the kind and its config...
     let declared = router.with_outputs(vec![PortDescriptor::new("only")]);
     assert_eq!(ports(&declared), ["only"]);
-    // ...a terminal kind's EMPTY declaration is `out`, which is what it
-    // publishes...
-    assert_eq!(ports(&FlowNode::new("o", "output")), ["out"]);
+    // ...a terminal kind's EMPTY declaration means NO ports, and this lookup
+    // has to say so. It asserted `["out"]` here until the strict reading
+    // landed, which is the empty-to-`out` collapse the walk used to make, in
+    // the other of the two gates that shape a port set. Reporting `out` as
+    // deliverable for a node that publishes nothing is precisely how a
+    // truncated chain stays SILENT — the warning below is what replaces it...
+    assert!(ports(&FlowNode::new("o", "output")).is_empty());
     // ...and a kind nobody registered publishes exactly `out`.
     assert_eq!(
         possible_ports(&FlowNode::new("x", "@acme/widget"), None),

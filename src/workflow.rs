@@ -149,10 +149,21 @@ pub fn import_workflow(
                 .or_else(|| Some(kind_name.clone())),
             description: string_at(raw, "description"),
             config,
-            // Deliberately left undeclared on import — the engine then falls
-            // back to the kind's ports, or a single `out`, matching every peer.
-            inputs: None,
-            outputs: None,
+            // Declared ports, READ rather than dropped. The comment that stood
+            // here said they were left undeclared "matching every peer", and
+            // that was measurably false: the TypeScript importer carries the
+            // document's ports onto `data.outputs`, and its EXPORTER writes
+            // them precisely so a runtime in another language does not have to
+            // guess at a config-derived port set it cannot compute
+            // (`switch_case` cases, `llm_router` routes).
+            //
+            // So the one field written FOR this runtime was the one field this
+            // runtime threw away, and the fallback quietly substituted the
+            // kind's placeholder ports — `case_a`, `case_b` — for the node's
+            // real ones. Nothing failed; the diagnostics simply named ports the
+            // node did not have.
+            inputs: ports_from(raw.get("inputs")),
+            outputs: ports_from(raw.get("outputs")),
         };
 
         node_ids.insert(node.id.clone());
@@ -253,6 +264,11 @@ pub fn export_workflow(graph: &FlowGraph, metadata: Option<&WorkflowMetadata>) -
         if !node.config.is_empty() {
             out.insert("config", Value::Object(node.config.clone()));
         }
+        // Declared ports, written back. Guarded on `Some`, NOT on non-emptiness:
+        // an empty list is a node saying "no ports", and omitting it would
+        // export that as "not declared" — silently turning the strict state
+        // into the fallback one on the next import. That is the round trip this
+        // pair with `ports_from` exists to make lossless.
         for (key, ports) in [("inputs", &node.inputs), ("outputs", &node.outputs)] {
             if let Some(ports) = ports {
                 out.insert(
@@ -302,6 +318,39 @@ pub fn export_workflow(graph: &FlowGraph, metadata: Option<&WorkflowMetadata>) -
 #[must_use]
 pub fn to_json(graph: &FlowGraph, metadata: Option<&WorkflowMetadata>) -> String {
     fancy_json::to_string(&export_workflow(graph, metadata))
+}
+
+/// Read a declared port list, preserving the three-state distinction.
+///
+/// An absent key stays `None`, so the engine falls back to the kind's ports and
+/// then to `out`. An empty array becomes `Some(Vec::new())` — a node saying "no
+/// ports" makes a different claim from a node saying nothing, and collapsing
+/// the two is how a terminal node starts publishing on `out` again.
+///
+/// A key that is present but is not an array is read as undeclared rather than
+/// as an error: it is a document this importer cannot honour, and the fallback
+/// is the same answer it gave before anything was declared at all.
+fn ports_from(raw: Option<&Value>) -> Option<Vec<PortDescriptor>> {
+    let list = raw?.as_array()?;
+
+    let mut ports: Vec<PortDescriptor> = Vec::new();
+    for port in list {
+        // A malformed entry is skipped rather than failing the import: a
+        // document that is otherwise readable should still run, and the
+        // undelivered-edge warning names any port that then goes missing.
+        //
+        // A bare string is a port id — the short form an agent emits — while an
+        // object must carry a string `id`. `PortDescriptor::from_value` defaults
+        // a missing id to `out`, which would turn `{}` into a port nobody wrote,
+        // so the id is checked HERE before that reader is trusted with the rest.
+        if let Some(id) = port.as_str() {
+            ports.push(PortDescriptor::new(id));
+        } else if port.get("id").and_then(Value::as_str).is_some() {
+            ports.push(PortDescriptor::from_value(port));
+        }
+    }
+
+    Some(ports)
 }
 
 fn optional(raw: &Value, key: &str) -> Option<String> {
