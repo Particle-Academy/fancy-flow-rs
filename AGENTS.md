@@ -165,9 +165,10 @@ Each has a doc comment at the point of divergence.
 
 ## Parity is a test result, not a claim
 
-**Seven** shared tables from `particle-academy/fancy-conformance` run through
+**Eight** shared tables from `particle-academy/fancy-conformance` run through
 its Rust loader: four in `tests/conformance.rs`, `flow/graph-runs` in
 `tests/graph_runs.rs`, `flow/run-diagnostics` in `tests/run_diagnostics.rs`,
+`flow/port-activation` in `tests/port_activation.rs`,
 and `flow/durable-dispatch` in `tests/durable_conformance.rs` — which also runs
 `flow/run-diagnostics` THROUGH the durable coordinator and every
 `flow/graph-runs` golden durably, comparing each with the single-process run. **Never
@@ -180,6 +181,15 @@ reported it.
 and the built-in offline executors — and the registry is NOT handed to
 `FlowRunner`.** Handing it over gives `for_each` its `item`/`done` ports from
 the kind fallback and disagrees on a case nobody changed.
+
+`flow/port-activation` (`tests/port_activation.rs`) hands the runner NO registry
+and names a kind no runtime ships, for the same reason: the declared-port
+fallback reaches for the KIND's ports before falling back to `out`, so a builtin
+name there would assert the builtin's ports instead of the rule under test. Its
+row 0303 is skipped for **node**, not for Rust — an explicitly empty `outputs`
+publishes nothing here, and `@particle-academy/fancy-flow` collapses it to `out`.
+That is the three-state invariant above, and this crate is on the side that
+keeps it.
 
 `flow/run-diagnostics` (`tests/run_diagnostics.rs`) is the one table that DOES
 hand the registry to the runner, and must: its warnings name the ports a source
@@ -233,11 +243,12 @@ conformance checkout is somewhere unusual.
 ## Status
 
 **0.1.0 — core parity and the durable layer, built and green, unpublished.**
-157 tests, **none ignored** (152 `#[test]`s plus five doctests), at
-fancy-conformance 0.26.0: 175 shared conformance rows asserted across SEVEN
+159 tests, **none ignored** (154 `#[test]`s plus five doctests), at
+fancy-conformance 0.27.0: 187 shared conformance rows asserted across EIGHT
 tables. Single-process: `shared/expr` (26), `shared/satisfies-range` (17),
 `shared/flow-run-identity` (25), `flow/kind-declaration-surface` (19, 1
-skipped), `flow/graph-runs` (23) and `flow/run-diagnostics` (14). Durable:
+skipped), `flow/graph-runs` (23), `flow/run-diagnostics` (14) and
+`flow/port-activation` (12). Durable:
 `flow/durable-dispatch` (14), `flow/run-diagnostics` through the coordinator
 (14) and `flow/graph-runs` durable-vs-single-process (23, 21 comparing
 outputs). Plus 56 durable unit tests, the invariant, policy, schema and
@@ -248,7 +259,7 @@ four tables" while the fifth was not being counted at all.
 
 **The fixture set is pinned by a git TAG, because `Cargo.lock` is not
 tracked.** This is a library, so the lock stays gitignored and the dependency
-line is the only pin there is: `fancy-conformance` is `tag = "v0.26.0"`, and
+line is the only pin there is: `fancy-conformance` is `tag = "v0.27.0"`, and
 `tests/conformance.rs` holds the same version as `PINNED_SUITE_VERSION`. It was
 `branch = "main"` until 2026-09-13, which meant a fresh clone and every CI run
 resolved whatever `main` was that day — two machines could assert against

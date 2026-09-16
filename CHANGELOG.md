@@ -35,6 +35,14 @@ promising otherwise until 1.0.
   `fancy-flow-php`, `fancy-flow` (PyPI) and this crate. `tests/multi_port_activation.rs`
   asserts all seven rows here.
 
+- **`flow/port-activation` (12 rows) is asserted here** (`tests/port_activation.rs`),
+  the EIGHTH shared table this crate runs. It pins the `__ports` subset rule, the
+  two single-port rules and the declared-port fallbacks across all four runtimes.
+  Row 0303 is skipped for **node**, not for Rust: an explicitly empty `outputs`
+  publishes nothing here — the three-state invariant — and
+  `@particle-academy/fancy-flow` collapses it to `out`. The summary prints that
+  skip on every run.
+
 - **A durable, per-node coordinator: `fancy_flow::durable`, serial by default**
   (fancy-flow-php#17). The port of fancy-flow-py's `fancy_flow.durable`, of
   `@particle-academy/fancy-flow`'s `src/durable/`, and of fancy-flow-php's
