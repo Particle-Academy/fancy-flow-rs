@@ -233,7 +233,7 @@ conformance checkout is somewhere unusual.
 ## Status
 
 **0.1.0 — core parity and the durable layer, built and green, unpublished.**
-150 tests, **none ignored** (145 `#[test]`s plus five doctests), at
+157 tests, **none ignored** (152 `#[test]`s plus five doctests), at
 fancy-conformance 0.26.0: 175 shared conformance rows asserted across SEVEN
 tables. Single-process: `shared/expr` (26), `shared/satisfies-range` (17),
 `shared/flow-run-identity` (25), `flow/kind-declaration-surface` (19, 1

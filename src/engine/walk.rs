@@ -369,11 +369,19 @@ impl<'a> Walk<'a> {
         let node_id = node.id.clone();
         self.outputs.insert(node_id.clone(), result.clone());
 
-        let (ports, value) = self.activated_ports(node, result);
+        let (ports, value, per_port) = self.activated_ports(node, result);
         for port_id in ports {
+            // The per-port entry when there is one, else the shared value. Read
+            // by KEY PRESENCE: a payload that is present and null is a payload,
+            // the same distinction `branch` had to learn.
+            let carried = per_port
+                .as_ref()
+                .and_then(|map| map.get(port_id.as_str()).cloned())
+                .unwrap_or_else(|| value.clone());
+
             self.port_values
-                .insert(port_key(&node_id, &port_id), value.clone());
-            self.emit(RunEvent::node_output(&node_id, &port_id, value.clone()));
+                .insert(port_key(&node_id, &port_id), carried.clone());
+            self.emit(RunEvent::node_output(&node_id, &port_id, carried));
         }
 
         self.emit(RunEvent::node_status(
@@ -389,13 +397,41 @@ impl<'a> Walk<'a> {
     /// activated ports back off the `node-output` events this emits rather than
     /// re-deriving them; a second copy of a routing table is the kind of
     /// duplicate that agrees for a year and then disagrees on one branch.
-    fn activated_ports(&self, node: &FlowNode, result: &Value) -> (Vec<String>, Value) {
+    fn activated_ports(
+        &self,
+        node: &FlowNode,
+        result: &Value,
+    ) -> (Vec<String>, Value, Option<Map>) {
         if let Some(map) = result.as_object() {
             if let Some(port) = map.get("__port").and_then(Value::as_str) {
                 return (
                     alloc::vec![port.to_string()],
                     map.get("value").cloned().unwrap_or(Value::Null),
+                    None,
                 );
+            }
+            // A CHOSEN SUBSET (#18, reported by MOIC): an ARRAY lights those
+            // ports with one payload, an OBJECT gives each lit port its own. An
+            // empty one lights NOTHING, the same answer an explicitly empty
+            // `outputs` gives below.
+            match map.get("__ports") {
+                Some(Value::Array(list)) => {
+                    return (
+                        list.iter()
+                            .filter_map(|p| p.as_str().map(str::to_string))
+                            .collect(),
+                        map.get("value").cloned().unwrap_or(Value::Null),
+                        None,
+                    );
+                }
+                Some(Value::Object(per_port)) => {
+                    return (
+                        per_port.iter().map(|(id, _)| id.to_string()).collect(),
+                        map.get("value").cloned().unwrap_or(Value::Null),
+                        Some(per_port.clone()),
+                    );
+                }
+                _ => {}
             }
             if let Some(port) = map.get("branch").and_then(Value::as_str) {
                 // Key PRESENCE, not null-ness. Two different questions:
@@ -412,7 +448,7 @@ impl<'a> Walk<'a> {
                     None => result.clone(),
                     Some(value) => value.clone(),
                 };
-                return (alloc::vec![port.to_string()], value);
+                return (alloc::vec![port.to_string()], value, None);
             }
         }
 
@@ -443,8 +479,8 @@ impl<'a> Walk<'a> {
             // `Some(vec![])` is "explicitly no ports" and is honoured as such.
             // Collapsing it into the `out` fallback is how a terminal node
             // starts publishing.
-            Some(ports) => (ports, result.clone()),
-            None => (alloc::vec!["out".to_string()], result.clone()),
+            Some(ports) => (ports, result.clone(), None),
+            None => (alloc::vec!["out".to_string()], result.clone(), None),
         }
     }
 

@@ -12,6 +12,29 @@ promising otherwise until 1.0.
 
 ### Added
 
+- **A node can activate a CHOSEN SUBSET of its output ports** (fancy-flow-php#18,
+  reported by MOIC). The engine knew two answers — `__port` / `branch` lit
+  exactly one port, anything else lit EVERY declared port — so a router matching
+  two of five lanes had to drop the rest of the work or wake lanes nobody asked
+  for.
+
+  `Port::many(&["a", "c"], value)` lights those two, each carrying `value`.
+  `Port::many_with(map)` gives each lit port its OWN payload. The wire shape is
+  `{"__ports": ["a","c"], "value": …}` or `{"__ports": {"a": …, "c": …}}`, and
+  the engine reads it directly, so a host in another language can emit it
+  without the sugar. **An empty list lights nothing, deliberately** — the same
+  answer an explicitly empty `outputs` already gives, and the honest one for a
+  router that matched no rule.
+
+  Per-port payloads are read by KEY PRESENCE, not by truthiness: a payload that
+  is present and `null` is a payload, which is the distinction `branch` already
+  had to learn. Nothing about the one-port and every-port rules changed, and a
+  node that never emits `__ports` behaves exactly as before.
+
+  Same shape, same tests, in all four runtimes — `@particle-academy/fancy-flow`,
+  `fancy-flow-php`, `fancy-flow` (PyPI) and this crate. `tests/multi_port_activation.rs`
+  asserts all seven rows here.
+
 - **A durable, per-node coordinator: `fancy_flow::durable`, serial by default**
   (fancy-flow-php#17). The port of fancy-flow-py's `fancy_flow.durable`, of
   `@particle-academy/fancy-flow`'s `src/durable/`, and of fancy-flow-php's
