@@ -171,6 +171,23 @@ impl ExecutorRegistry {
         self.clone()
     }
 
+    /// The same registry, minus its node-id bindings.
+    ///
+    /// What a `for_each` lane runs with. A node-id binding addresses a node of
+    /// the graph it was bound for, and a lane node IS a node of that graph —
+    /// so the durable replay's fences, bound by id to every node except the one
+    /// being executed, would match every lane node and the lane would "succeed"
+    /// with a fence marker for each result. The Python twin shipped exactly
+    /// that in 0.27.0; fancy-flow-php's `ForEachExecutor` strips them the same
+    /// way. Kind bindings and the `*` fallback carry over, so a host kind still
+    /// resolves inside the lane.
+    #[must_use]
+    pub fn without_node_bindings(&self) -> Self {
+        let mut copy = self.fork();
+        copy.by_node.clear();
+        copy
+    }
+
     /// Whether a binding exists under ANY id this kind answers to.
     #[must_use]
     pub fn has_kind(&self, kind: &str) -> bool {

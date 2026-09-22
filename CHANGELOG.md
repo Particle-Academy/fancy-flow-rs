@@ -10,7 +10,52 @@ promising otherwise until 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- **`for_each`'s `item` port now runs a lane once per item.** Wire `item` to a
+  node and the lane reachable from it — stopping at anything reachable from
+  `done` — runs once per resolved item, aggregating `{items, results, failures,
+  count}` on `done`. `results` is index-aligned with `items` (`null` where an
+  item's lane failed); `failures` holds `{index, item, error}` for each one
+  that did.
+
+  Until now this crate accepted the edge and IGNORED it: every downstream node
+  ran ONCE against the whole collection, silently. fancy-labs' `batch-scoring`
+  reference graph produced five per-item scores on the PHP twin and one
+  aggregate here, and its assertion failed with "the path names nothing"
+  because `results` was never produced. The TypeScript (0.78.0) and Python
+  (0.27.1) runtimes implement the same lane.
+
+  **What a consumer must DO: nothing, unless you wired `item`.** An unwired
+  `item`, or `mode: "collect"`, publishes the list and its size exactly as
+  before — one node, one claim, one checkpoint. If you DID wire `item` and
+  relied on downstream nodes receiving the whole collection, they now receive
+  one item at a time; `mode: "collect"` restores the old behaviour explicitly.
+
+  A lane is capped at `maxItems` (default 1000, ceiling 10000); a longer list
+  FAILS the run rather than iterating past the cap or truncating. A pause
+  inside a lane pauses the run instead of being recorded as one item's failure.
+
+- **`ExecutionContext::graph()` and `ExecutionContext::executors()`.** The
+  graph a node runs in and the registry the run uses. A structural executor
+  cannot derive a nested lane from its node and inputs alone, which is why the
+  `item` port had no implementation. Additive.
+
+- **`ExecutorRegistry::without_node_bindings()`.** What a lane runs with. Under
+  the durable coordinator the context's registry is the replay's fork, with
+  every node but the one running fenced BY ID — and a lane node is a node of
+  the same graph, so a lane run on that registry "succeeds" with a fence marker
+  for every result. The Python twin shipped exactly that in 0.27.0;
+  `tests/for_each_lane.rs` runs the lane durably and fails if it recurs.
+
 ### Changed
+
+- **`for_each` declares `results` and `failures`**, and its description says
+  what it now does. The pinned fixture set moves to `fancy-conformance`
+  v0.31.0, Cargo tag and `PINNED_SUITE_VERSION` together: 0.30.0 added
+  `results` and 0.31.0 `failures` to `flow/kind-declaration-surface` row 0106,
+  both BREAKING, precisely so that a runtime which had not implemented
+  iteration would fail there instead of reporting parity.
 
 - **An empty output declaration means NO PORTS, from the node OR the kind — and
   a chain it cuts says so.** `activated_ports` refused an empty list coming from

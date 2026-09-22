@@ -49,10 +49,18 @@ use fancy_flow::RunIdentity;
 /// listed -- it was written before this crate had a coordinator -- which is a
 /// fixture-repo edit, not something this crate can change.
 ///
+/// Moved 0.29.0 -> 0.31.0 on 2026-09-22, in the same change as the `for_each`
+/// `item` lane. 0.30.0 added `results` and 0.31.0 `failures` to
+/// `flow/kind-declaration-surface` row 0106, both BREAKING; the crate before the
+/// change declared only `items` / `count`. Every table was re-run against the
+/// `v0.31.0` tag: satisfies-range 17, flow-run-identity 25, expr 26,
+/// kind-declaration-surface 19 (+ the one documented skip, 0202), graph-runs 23,
+/// port-activation 12, run-diagnostics 14, durable-dispatch 14 -- nothing failed.
+///
 /// `Cargo.toml` pulls `tag = "v<this>"`. Move the two together, and only after
 /// re-running the tables; `cargo_pulls_the_fixture_tag_this_suite_pins` fails
 /// otherwise. A pin that follows disk asserts nothing.
-const PINNED_SUITE_VERSION: &str = "0.29.0";
+const PINNED_SUITE_VERSION: &str = "0.31.0";
 
 #[test]
 fn the_pinned_fixture_version_is_the_one_on_disk() {

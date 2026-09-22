@@ -193,16 +193,30 @@ pub fn kinds() -> Vec<NodeKind> {
     );
     out.push(
         NodeKind::new("for_each", "logic", "For each")
-            // Read from nodes/logic.rs:80-82.
+            // Read from nodes/logic.rs `for_each`. `results` and `failures` are
+            // the WIRED shape -- what a lane produces when `item` is connected.
+            // Declared unconditionally because a declaration describes the
+            // kind, not one graph's use of it, and because the shared table
+            // requires them: fancy-conformance 0.30.0 added `results` and
+            // 0.31.0 `failures`, both BREAKING, so a runtime that has not
+            // implemented iteration fails there instead of claiming parity.
             .output_shape(
                 [
                     OutputField::new("items", "array").describe("The list that was iterated."),
+                    OutputField::new("results", "array")
+                        .describe("Each item's lane outputs, index-aligned; null where it failed."),
+                    OutputField::new("failures", "array")
+                        .describe("{index, item, error} for each item whose lane failed."),
                     OutputField::new("count", "number").describe("How many items it held."),
                 ]
                 .into_iter()
                 .collect(),
             )
-            .describe("Publishes a collection and its size. Fan-out as DATA, not as jobs.")
+            .describe(
+                "Wire `item` to a lane and it runs once per item, aggregating `results` and \
+                 `failures` on `done`. Leave `item` unwired (or set `mode: collect`) and it \
+                 just publishes the list and its size -- one node, one checkpoint.",
+            )
             .inputs(ports(&["in"]))
             .outputs(ports(&["item", "done"]))
             .config(alloc::vec![ConfigField::new(

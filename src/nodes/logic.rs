@@ -3,14 +3,17 @@
 //! Worth precision, because everything downstream depends on which port lights
 //! up. See `.ai/knowledge/flow-engine-spec.md` section 4.
 
-use alloc::string::ToString;
+use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use fancy_json::{Map, Value};
 
+use crate::engine::FlowRunner;
 use crate::error::RunAborted;
 use crate::nodes::support::{expr, routing_diagnostics};
-use crate::runtime::{ExecutionContext, LogLevel, Port, RunEvent};
+use crate::runtime::{ExecutionContext, LogLevel, Pause, Port, RunEvent, RunOptions};
+use crate::schema::{FlowEdge, FlowGraph};
 
 /// `branch` — two ports, exactly one taken.
 ///
@@ -66,16 +69,143 @@ pub fn switch_case(ctx: &mut ExecutionContext<'_>) -> Result<Value, RunAborted> 
     Ok(Port::only(&port, ctx.input_or_all()))
 }
 
-/// `for_each` — fan-out as DATA, not as jobs.
+/// Default cap on how many items a `for_each` lane iterates.
+pub const FOR_EACH_DEFAULT_MAX_ITEMS: u32 = 1000;
+
+/// The ceiling `maxItems` may be raised to.
+pub const FOR_EACH_HARD_MAX_ITEMS: u32 = 10_000;
+
+/// Every node reachable from `starts`, the starts included. Iterative: a graph
+/// is untrusted structure, and in this crate a stack overflow is an abort.
+fn reachable<'g>(
+    adjacency: &BTreeMap<&'g str, Vec<&'g str>>,
+    starts: impl IntoIterator<Item = &'g str>,
+) -> BTreeSet<&'g str> {
+    let mut seen = BTreeSet::new();
+    let mut queue: Vec<&'g str> = starts.into_iter().collect();
+    while let Some(id) = queue.pop() {
+        if !seen.insert(id) {
+            continue;
+        }
+        if let Some(targets) = adjacency.get(id) {
+            queue.extend(targets.iter().copied());
+        }
+    }
+    seen
+}
+
+/// The edges leaving `node_id` on `port`. An edge with no source handle left
+/// the default port, `out`.
+fn edges_from<'g>(graph: &'g FlowGraph, node_id: &str, port: &str) -> Vec<&'g FlowEdge> {
+    graph
+        .edges
+        .iter()
+        .filter(|e| e.source == node_id && e.source_handle.as_deref().unwrap_or("out") == port)
+        .collect()
+}
+
+/// The loop BODY: nodes reachable from this node's `item` port, stopping at
+/// anything also reachable from `done`.
 ///
-/// Publishes the resolved collection and its size. It does **not** spawn one
-/// job per item, and that is deliberate: on a durable run a `for_each` over
-/// 10,000 rows is one node, one claim, one checkpoint — not 10,000. Hosts that
-/// want true per-item iteration override this executor.
+/// Derived from the graph rather than declared, so a graph says what the body
+/// is by being drawn. The `done` subtraction is what lets a node sit after the
+/// loop and still be reachable from inside it: it belongs to whichever port
+/// leads to it first.
+///
+/// `None` means "no `item` edge" — the data-only case, not an error.
+fn for_each_lane<'g>(
+    graph: &'g FlowGraph,
+    node_id: &str,
+) -> Option<(FlowGraph, Vec<&'g FlowEdge>)> {
+    let item_edges = edges_from(graph, node_id, "item");
+    if item_edges.is_empty() {
+        return None;
+    }
+
+    let mut adjacency: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for edge in &graph.edges {
+        adjacency
+            .entry(edge.source.as_str())
+            .or_default()
+            .push(edge.target.as_str());
+    }
+
+    let done = reachable(
+        &adjacency,
+        edges_from(graph, node_id, "done")
+            .into_iter()
+            .map(|e| e.target.as_str()),
+    );
+    let body: BTreeSet<&str> = reachable(&adjacency, item_edges.iter().map(|e| e.target.as_str()))
+        .into_iter()
+        .filter(|id| !done.contains(id) && *id != node_id)
+        .collect();
+
+    let lane = FlowGraph {
+        nodes: graph
+            .nodes
+            .iter()
+            .filter(|n| body.contains(n.id.as_str()))
+            .cloned()
+            .collect(),
+        edges: graph
+            .edges
+            .iter()
+            .filter(|e| body.contains(e.source.as_str()) && body.contains(e.target.as_str()))
+            .cloned()
+            .collect(),
+    };
+    let entries = item_edges
+        .into_iter()
+        .filter(|e| body.contains(e.target.as_str()))
+        .collect();
+
+    Some((lane, entries))
+}
+
+/// `maxItems` as authored: a number, or a string holding one. Anything else is
+/// not a cap, and is refused by the range check rather than read as zero.
+fn max_items_option(ctx: &ExecutionContext<'_>) -> Option<f64> {
+    match ctx.option("maxItems") {
+        None | Some(Value::Null) => Some(f64::from(FOR_EACH_DEFAULT_MAX_ITEMS)),
+        Some(value) => value.as_f64().or_else(|| {
+            value
+                .as_str()
+                .and_then(|text| text.trim().parse::<f64>().ok())
+        }),
+    }
+}
+
+/// `for_each` — the collection as DATA, or the lane run once per item.
+///
+/// WITHOUT an `item` edge (or with `mode: "collect"`) this publishes the
+/// resolved collection and its size and stops. That half is deliberate rather
+/// than unfinished: on a durable run a `for_each` over 10,000 rows is one node,
+/// one claim, one checkpoint — not 10,000.
+///
+/// WITH an `item` edge it runs the derived lane once per item and aggregates
+/// `{items, results, failures, count}` on `done`. `results` is index-aligned
+/// with `items` (`null` where an item's lane failed); `failures` holds
+/// `{index, item, error}` for each one that did. That half was missing until
+/// the context carried the graph: the schema accepted the edge and the engine
+/// ignored it, so every downstream node ran ONCE against the whole collection.
+/// fancy-labs' `batch-scoring` reference graph produced five per-item scores on
+/// the PHP twin and one aggregate here.
+///
+/// The lane runs on the registry minus its node-id bindings. Under the durable
+/// coordinator the context's registry is the replay's fork, with every node but
+/// this one fenced by id — and a lane node is a node of the same graph. The
+/// Python twin shipped that leak in 0.27.0.
+///
+/// `concurrency` is carried rather than acted on: items run in order, as they
+/// do on every peer, and parity outranks throughput here.
 ///
 /// # Errors
 ///
-/// Never.
+/// When the derived lane is empty, `maxItems` is outside 1..=10000, the list is
+/// longer than `maxItems`, or an item's lane pauses — a pause is not a failure,
+/// and recording it as one would strand whoever the run waits on. A lane that
+/// merely FAILS is recorded in `failures` and the loop carries on.
 pub fn for_each(ctx: &mut ExecutionContext<'_>) -> Result<Value, RunAborted> {
     let source = expr::evaluate_in(ctx.option("source"), ctx.inputs());
 
@@ -88,12 +218,112 @@ pub fn for_each(ctx: &mut ExecutionContext<'_>) -> Result<Value, RunAborted> {
         other => alloc::vec![other.clone()],
     };
 
+    let lane = match (ctx.graph(), ctx.executors()) {
+        (Some(graph), Some(executors)) if ctx.option_str("mode", "") != "collect" => {
+            for_each_lane(graph, &ctx.node().id).map(|lane| (lane, executors))
+        }
+        _ => None,
+    };
+
+    let Some(((lane_graph, entries), executors)) = lane else {
+        let mut out = Map::new();
+        out.insert("count", Value::from(items.len() as u64));
+        out.insert("items", Value::Array(items));
+        // `items` before `count` on the peers; key ORDER is not part of equality
+        // in any conformance loader, so this is presentation only.
+        return Ok(Value::Object(out));
+    };
+
+    let node_id = ctx.node().id.clone();
+
+    if lane_graph.nodes.is_empty() {
+        return Err(ctx.abort(&alloc::format!(
+            "for_each \"{node_id}\" has an item edge but its derived lane is empty"
+        )));
+    }
+
+    let max_items = match max_items_option(ctx) {
+        Some(max)
+            if max.is_finite() && (1.0..=f64::from(FOR_EACH_HARD_MAX_ITEMS)).contains(&max) =>
+        {
+            max
+        }
+        _ => {
+            return Err(ctx.abort(&alloc::format!(
+                "for_each \"{node_id}\" maxItems must be between 1 and {FOR_EACH_HARD_MAX_ITEMS}"
+            )))
+        }
+    };
+    // Compared through u32 so the conversion is lossless; a list longer than
+    // u32::MAX is over any cap the range check allows.
+    if !matches!(u32::try_from(items.len()), Ok(n) if f64::from(n) <= max_items) {
+        return Err(ctx.abort(&alloc::format!(
+            "for_each \"{node_id}\" resolved {} items exceeds its maxItems cap of {max_items}",
+            items.len()
+        )));
+    }
+
+    let lane_executors = executors.without_node_bindings();
+    let runner = ctx
+        .kinds()
+        .map_or_else(FlowRunner::new, FlowRunner::with_kinds);
+
+    let mut results: Vec<Value> = Vec::with_capacity(items.len());
+    let mut failures: Vec<Value> = Vec::new();
+
+    for (index, item) in items.iter().enumerate() {
+        let mut initial_inputs: BTreeMap<String, Map> = BTreeMap::new();
+        for edge in &entries {
+            initial_inputs
+                .entry(edge.target.clone())
+                .or_default()
+                .insert(edge.target_handle.as_deref().unwrap_or("in"), item.clone());
+        }
+
+        let options = RunOptions {
+            initial_inputs,
+            depth: ctx.depth() + 1,
+            // The index rides on the identity, so a node in iteration 3 cannot
+            // share an idempotency key with the same node in iteration 4.
+            run: ctx
+                .run()
+                .map(|run| run.descend(&node_id, Some(index as u64))),
+            ..RunOptions::new()
+        };
+
+        let nested = runner.run(&lane_graph, &lane_executors, &options)?;
+
+        if !nested.ok {
+            let reason = nested.error.unwrap_or_else(|| "unknown error".to_string());
+
+            // A PAUSE IS NOT A FAILURE. It travels the error channel verbatim.
+            if Pause::is_pause(Some(&reason)) {
+                return Err(ctx.abort(&reason));
+            }
+
+            results.push(Value::Null);
+            let mut failure = Map::new();
+            failure.insert("index", Value::from(index as u64));
+            failure.insert("item", item.clone());
+            failure.insert("error", Value::from(reason));
+            failures.push(Value::Object(failure));
+            continue;
+        }
+
+        let mut outputs = Map::new();
+        for (id, value) in nested.outputs {
+            outputs.insert(id, value);
+        }
+        results.push(Value::Object(outputs));
+    }
+
+    let count = items.len() as u64;
     let mut out = Map::new();
-    out.insert("count", Value::from(items.len() as u64));
     out.insert("items", Value::Array(items));
-    // `items` before `count` on the peers; key ORDER is not part of equality in
-    // any conformance loader, so this is presentation only.
-    Ok(Value::Object(out))
+    out.insert("results", Value::Array(results));
+    out.insert("failures", Value::Array(failures));
+    out.insert("count", Value::from(count));
+    Ok(Port::only("done", Value::Object(out)))
 }
 
 /// `merge` — several inputs, one value.

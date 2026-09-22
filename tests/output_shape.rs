@@ -29,7 +29,7 @@ fn declares_the_fields_of_kinds_whose_output_is_enumerable() {
     let cases: &[(&str, &[&str])] = &[
         ("notify", &["sent", "channel", "to", "message"]),
         ("webhook_out", &["sent", "status", "response"]),
-        ("for_each", &["items", "count"]),
+        ("for_each", &["items", "results", "failures", "count"]),
         ("wait", &["waited", "duration", "input"]),
         ("log", &["logged", "level"]),
         ("embed_search", &["query", "matches"]),

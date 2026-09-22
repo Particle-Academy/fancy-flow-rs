@@ -9,7 +9,9 @@ use super::events::RunEvent;
 use super::identity::RunIdentity;
 use super::pause::{Pause, PauseSignal};
 use crate::error::RunAborted;
-use crate::schema::FlowNode;
+use crate::executors::ExecutorRegistry;
+use crate::registry::NodeKindRegistry;
+use crate::schema::{FlowGraph, FlowNode};
 
 /// The executor's handle on the run.
 ///
@@ -29,6 +31,18 @@ pub struct ExecutionContext<'a> {
     depth: usize,
     run: Option<&'a RunIdentity>,
     emitted: Vec<RunEvent>,
+    scope: Option<Scope<'a>>,
+}
+
+/// The graph a node is running in, and what that graph runs against.
+///
+/// One field, not three, so the graph and the registry cannot disagree about
+/// which run they came from.
+#[derive(Clone, Copy)]
+struct Scope<'a> {
+    graph: &'a FlowGraph,
+    executors: &'a ExecutorRegistry,
+    kinds: Option<&'a NodeKindRegistry>,
 }
 
 impl<'a> ExecutionContext<'a> {
@@ -44,7 +58,51 @@ impl<'a> ExecutionContext<'a> {
             depth,
             run,
             emitted: Vec::new(),
+            scope: None,
         }
+    }
+
+    /// Attach the graph this node runs in, and the registry and catalogue the
+    /// run is using. The walk always does; a context built without one is a
+    /// node with no graph around it, which is what `for_each` falls back on.
+    pub(crate) fn with_scope(
+        mut self,
+        graph: &'a FlowGraph,
+        executors: &'a ExecutorRegistry,
+        kinds: Option<&'a NodeKindRegistry>,
+    ) -> Self {
+        self.scope = Some(Scope {
+            graph,
+            executors,
+            kinds,
+        });
+        self
+    }
+
+    /// The whole graph this node is running in, when the engine supplied it.
+    ///
+    /// A structural executor cannot derive a nested lane from its node and
+    /// inputs alone — which is why `for_each`'s `item` port had no
+    /// implementation here until this existed.
+    #[must_use]
+    pub fn graph(&self) -> Option<&'a FlowGraph> {
+        self.scope.map(|scope| scope.graph)
+    }
+
+    /// The executor registry this run is executing against.
+    ///
+    /// Under the durable coordinator this is the replay's FORK, with every
+    /// node but the one running fenced by id. Anything that runs parent-graph
+    /// nodes itself must go through
+    /// [`without_node_bindings`](ExecutorRegistry::without_node_bindings).
+    #[must_use]
+    pub fn executors(&self) -> Option<&'a ExecutorRegistry> {
+        self.scope.map(|scope| scope.executors)
+    }
+
+    /// The kind catalogue the runner resolves ports against, if it has one.
+    pub(crate) fn kinds(&self) -> Option<&'a NodeKindRegistry> {
+        self.scope.and_then(|scope| scope.kinds)
     }
 
     pub(crate) fn take_emitted(&mut self) -> Vec<RunEvent> {

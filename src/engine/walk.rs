@@ -291,6 +291,7 @@ impl<'a> Walk<'a> {
         let incoming = self.incoming(&node.id);
         let inputs = self.collect_inputs(node, &incoming);
         ExecutionContext::new(node, inputs, self.options.depth, self.options.run.as_ref())
+            .with_scope(self.graph, self.executors, self.kinds)
     }
 
     /// Report what an executor did, and absorb whatever it emitted.
