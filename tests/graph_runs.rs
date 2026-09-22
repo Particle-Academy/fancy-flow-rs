@@ -1,4 +1,4 @@
-//! `flow/graph-runs` — the 23 golden whole-graph cases, from the shared table.
+//! `flow/graph-runs` — the shared golden whole-graph cases, from the shared table.
 //!
 //! **Loaded through a runner. Rows are never transcribed into this repo.**
 //! `satisfiesRange` was asserted against a hand-copied duplicate until someone
@@ -85,7 +85,7 @@ fn the_rust_engine_reproduces_every_golden_graph_run() {
         summary.ok,
         "the Rust engine diverges from the shared graph goldens"
     );
-    assert_eq!(summary.passed, 23, "every case must actually run");
+    assert_eq!(summary.passed, 31, "every case must actually run");
     assert_eq!(summary.skipped, 0, "no case is skipped for Rust");
 }
 
@@ -94,7 +94,7 @@ fn the_suite_is_the_one_the_other_runtimes_assert() {
     // A vacuity guard. If this file ever pointed at an empty or renamed suite,
     // the test above would pass by running nothing.
     let rows = cases("flow/graph-runs", None).expect("suite loads");
-    assert_eq!(rows.len(), 23);
+    assert_eq!(rows.len(), 31);
 
     let ids: Vec<&str> = rows.iter().map(fancy_conformance::Case::id).collect();
     assert!(
@@ -107,4 +107,62 @@ fn the_suite_is_the_one_the_other_runtimes_assert() {
     );
     assert!(ids.contains(&"0021-cycle"));
     assert!(ids.contains(&"0022-unknown-kind"));
+}
+
+#[test]
+fn other_routing_values_remain_accepted() {
+    let rows = cases("flow/graph-runs", None).expect("suite loads");
+    for (id, key) in [
+        ("0024-branch-bare-path", "condition"),
+        ("0028-switch-case-bare-path", "value"),
+    ] {
+        let row = rows.iter().find(|row| row.id() == id).expect("refusal row");
+        for value in [
+            Value::from(""),
+            Value::from("  "),
+            Value::from("\n\t"),
+            Value::Bool(true),
+            Value::Bool(false),
+            Value::from(1),
+            Value::from(0),
+            Value::Null,
+            Value::from("{{ in.data.fits }}"),
+            Value::from("prefix {{ in.kind }}"),
+            Value::from("{{ in.kind }}-{{ in.kind }}"),
+        ] {
+            let scalar_true =
+                key == "condition" && (value == Value::Bool(true) || value == Value::from(1));
+            let mut input = row.input().clone();
+            let nodes = input
+                .as_object_mut()
+                .unwrap()
+                .get_mut("schema")
+                .unwrap()
+                .as_object_mut()
+                .unwrap()
+                .get_mut("graph")
+                .unwrap()
+                .as_object_mut()
+                .unwrap()
+                .get_mut("nodes")
+                .unwrap()
+                .as_array_mut()
+                .unwrap();
+            *nodes[1]
+                .as_object_mut()
+                .unwrap()
+                .get_mut("config")
+                .unwrap()
+                .as_object_mut()
+                .unwrap()
+                .get_mut(key)
+                .unwrap() = value;
+            let actual = run_case(&input).expect("runs");
+            assert_eq!(actual.get("ok"), Some(&Value::Bool(true)), "{actual:?}");
+            if scalar_true {
+                assert!(actual.get("outputs").unwrap().get("deal").is_some());
+                assert!(actual.get("outputs").unwrap().get("drop").is_none());
+            }
+        }
+    }
 }

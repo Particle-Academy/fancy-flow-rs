@@ -174,6 +174,7 @@ pub fn kinds() -> Vec<NodeKind> {
                 "condition",
                 "Condition"
             )
+            .describe("String values must be {{ }}-wrapped expressions; bare strings and unclosed templates abort the run.")
             .required()]),
     );
     out.push(
@@ -187,7 +188,7 @@ pub fn kinds() -> Vec<NodeKind> {
             // ports into the document. `default` is the floor.
             .outputs(ports(&["default"]))
             .config(alloc::vec![
-                ConfigField::new("expression", "value", "Value").required(),
+                ConfigField::new("expression", "value", "Value").describe("String values must be {{ }}-wrapped expressions; bare strings and unclosed templates abort the run.").required(),
                 ConfigField::new("json", "cases", "Cases"),
             ]),
     );

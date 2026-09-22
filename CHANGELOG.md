@@ -48,50 +48,6 @@ promising otherwise until 1.0.
   for every result. The Python twin shipped exactly that in 0.27.0;
   `tests/for_each_lane.rs` runs the lane durably and fails if it recurs.
 
-### Changed
-
-- **`for_each` declares `results` and `failures`**, and its description says
-  what it now does. The pinned fixture set moves to `fancy-conformance`
-  v0.31.0, Cargo tag and `PINNED_SUITE_VERSION` together: 0.30.0 added
-  `results` and 0.31.0 `failures` to `flow/kind-declaration-surface` row 0106,
-  both BREAKING, precisely so that a runtime which had not implemented
-  iteration would fail there instead of reporting parity.
-
-- **An empty output declaration means NO PORTS, from the node OR the kind — and
-  a chain it cuts says so.** `activated_ports` refused an empty list coming from
-  a kind and published `out` instead, so a terminal kind could never actually
-  terminate and a chain ran straight through it. That refusal was defensible
-  while the alternative was a SILENT cut; the owner's ruling was
-  strict-but-loud, so the cut now happens and announces itself.
-
-  `possible_ports` honours it too, and that is what makes the above safe. It had
-  the SAME empty-to-`out` collapse, in the other of the two gates that shape a
-  port set. Fixing only the walk would have been half a fix and the dangerous
-  half: the node publishes nothing while the lookup still reports `out` as
-  deliverable, leaving the undelivered-edge warning silent for exactly the edge
-  that had just stopped delivering. A terminal node with nothing downstream
-  stays silent — the warning is keyed on the EDGE, because a diagnostic that
-  fires on correct graphs is how a real one stops being read.
-
-- **The pinned fixture set moves to `fancy-conformance` v0.29.0**, Cargo tag and
-  `PINNED_SUITE_VERSION` together. `flow/graph-runs` row 0003's golden changed
-  with the ruling, and 0.29.0 declares that row's ports on the NODE — without
-  which the row turned on whether the runner holds a kind CATALOGUE, which this
-  crate's graph-runs harness deliberately does not and PHP's always does. The
-  same document would have given two defensible answers; it now gives one.
-
-### Fixed
-
-- **`import_workflow` now READS a node's declared `inputs` / `outputs`; the
-  exporter already wrote them** (fancy-flow-php#20). They were dropped, so the
-  one field the TypeScript exporter writes FOR the other runtimes was the one
-  field this one threw away, and the fallback quietly substituted the kind's
-  placeholder ports for the node's real ones. `fancy-flow-php` and `fancy-flow`
-  (PyPI) had the identical gap and move in the same release. All three states
-  survive a round trip, and a bare-string port is read as well as an object.
-
-### Added
-
 - **A node can activate a CHOSEN SUBSET of its output ports** (fancy-flow-php#18,
   reported by MOIC). The engine knew two answers — `__port` / `branch` lit
   exactly one port, anything else lit EVERY declared port — so a router matching
@@ -227,6 +183,45 @@ promising otherwise until 1.0.
 
 ### Changed
 
+- **BREAKING:** Bare or unclosed routing strings in `branch.condition` and
+  `switch_case.value` now abort with an actionable error. Wrap bare values in
+  `{{ }}` (for example, `{{ in.data.fits }}`) and close every opening `{{`.
+  Bare branch strings previously
+  selected a constant route (normally `true`), regardless of the input data;
+  bare switch strings selected a literal case key. Blank strings, non-string
+  values, and properly closed mixed interpolation retain their existing behavior.
+- The two routing fields now describe the required expression wrapping.
+
+- **`for_each` declares `results` and `failures`**, and its description says
+  what it now does. The pinned fixture set moves to `fancy-conformance`
+  v0.31.0, Cargo tag and `PINNED_SUITE_VERSION` together: 0.30.0 added
+  `results` and 0.31.0 `failures` to `flow/kind-declaration-surface` row 0106,
+  both BREAKING, precisely so that a runtime which had not implemented
+  iteration would fail there instead of reporting parity.
+
+- **An empty output declaration means NO PORTS, from the node OR the kind — and
+  a chain it cuts says so.** `activated_ports` refused an empty list coming from
+  a kind and published `out` instead, so a terminal kind could never actually
+  terminate and a chain ran straight through it. That refusal was defensible
+  while the alternative was a SILENT cut; the owner's ruling was
+  strict-but-loud, so the cut now happens and announces itself.
+
+  `possible_ports` honours it too, and that is what makes the above safe. It had
+  the SAME empty-to-`out` collapse, in the other of the two gates that shape a
+  port set. Fixing only the walk would have been half a fix and the dangerous
+  half: the node publishes nothing while the lookup still reports `out` as
+  deliverable, leaving the undelivered-edge warning silent for exactly the edge
+  that had just stopped delivering. A terminal node with nothing downstream
+  stays silent — the warning is keyed on the EDGE, because a diagnostic that
+  fires on correct graphs is how a real one stops being read.
+
+- **The pinned fixture set moves to `fancy-conformance` v0.29.0**, Cargo tag and
+  `PINNED_SUITE_VERSION` together. `flow/graph-runs` row 0003's golden changed
+  with the ruling, and 0.29.0 declares that row's ports on the NODE — without
+  which the row turned on whether the runner holds a kind CATALOGUE, which this
+  crate's graph-runs harness deliberately does not and PHP's always does. The
+  same document would have given two defensible answers; it now gives one.
+
 - **The undelivered-edge rule moved out of `Walk` into
   `engine::undelivered_edges`**, one crate-private function that both the walk
   and the durable coordinator call, as TypeScript's `undeliveredEdgeWarnings`,
@@ -254,6 +249,18 @@ promising otherwise until 1.0.
   warning rows. Every existing table printed the same counts as at `v0.23.0`.
 
 ### Fixed
+
+- Pin fancy-conformance 0.32.0 and assert shared `flow/graph-runs` refusal
+  rows 0024–0031, including exact errors, trimmed suggestions and unclosed
+  templates (#24).
+
+- **`import_workflow` now READS a node's declared `inputs` / `outputs`; the
+  exporter already wrote them** (fancy-flow-php#20). They were dropped, so the
+  one field the TypeScript exporter writes FOR the other runtimes was the one
+  field this one threw away, and the fallback quietly substituted the kind's
+  placeholder ports for the node's real ones. `fancy-flow-php` and `fancy-flow`
+  (PyPI) had the identical gap and move in the same release. All three states
+  survive a round trip, and a bare-string port is read as well as an object.
 
 - **A template that starts with `{{` and ends with `}}` but holds more than one
   reference evaluated to null** (fancy-flow-php#16). `expr::evaluate` read

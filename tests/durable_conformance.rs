@@ -331,7 +331,7 @@ fn the_durable_driver_agrees_with_the_single_process_run_on_every_golden_graph()
     .expect("the shared suite must load; a missing checkout is a FAILURE, not a skip");
 
     print!("[durable parity] ");
-    expect_green(&summary, 23);
+    expect_green(&summary, 31);
 
     // Not all verdicts may be failures: a table of graphs that all fail compares
     // no outputs at all.
@@ -340,7 +340,7 @@ fn the_durable_driver_agrees_with_the_single_process_run_on_every_golden_graph()
         .iter()
         .filter(|case| case.expected().get("ok").and_then(Value::as_bool) == Some(true))
         .count();
-    println!("[durable parity] {succeeding} of 23 rows compared outputs");
+    println!("[durable parity] {succeeding} of 31 rows compared outputs");
     assert!(succeeding >= 20, "only {succeeding} rows compared outputs");
 }
 
@@ -410,5 +410,5 @@ fn the_suites_are_the_ones_the_other_runtimes_assert() {
         cases("flow/run-diagnostics", None).expect("loads").len(),
         14
     );
-    assert_eq!(cases("flow/graph-runs", None).expect("loads").len(), 23);
+    assert_eq!(cases("flow/graph-runs", None).expect("loads").len(), 31);
 }

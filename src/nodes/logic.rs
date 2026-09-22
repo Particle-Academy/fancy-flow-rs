@@ -15,6 +15,49 @@ use crate::nodes::support::{expr, routing_diagnostics};
 use crate::runtime::{ExecutionContext, LogLevel, Pause, Port, RunEvent, RunOptions};
 use crate::schema::{FlowEdge, FlowGraph};
 
+// Routing fields require templates; ordinary literal configuration does not.
+fn validate_routing_expression(
+    ctx: &ExecutionContext<'_>,
+    kind: &str,
+    field: &str,
+) -> Result<(), RunAborted> {
+    let Some(value) = ctx.option(field).and_then(Value::as_str) else {
+        return Ok(());
+    };
+    let bare = value.trim();
+    if bare.is_empty() {
+        return Ok(());
+    }
+    let subject = alloc::format!("{kind} \"{}\" {field} \"{bare}\"", ctx.node().id);
+    if !value.contains("{{") {
+        return Err(ctx.abort(&alloc::format!(
+            "{subject} is not an expression -- wrap it: {{{{ {bare} }}}}"
+        )));
+    }
+    let bytes = value.as_bytes();
+    let mut open = 0usize;
+    let mut index = 0;
+    while index + 1 < bytes.len() {
+        match &bytes[index..index + 2] {
+            b"{{" => {
+                open += 1;
+                index += 2;
+            }
+            b"}}" => {
+                open = open.saturating_sub(1);
+                index += 2;
+            }
+            _ => index += 1,
+        }
+    }
+    if open > 0 {
+        return Err(ctx.abort(&alloc::format!(
+            "{subject} has an unclosed expression -- close every {{{{ with }}}}"
+        )));
+    }
+    Ok(())
+}
+
 /// `branch` — two ports, exactly one taken.
 ///
 /// The condition resolves through [`expr`] against the node's inputs and
@@ -24,8 +67,9 @@ use crate::schema::{FlowEdge, FlowGraph};
 ///
 /// # Errors
 ///
-/// Never.
+/// Refuses a nonblank string without expression delimiters or with an unclosed template.
 pub fn branch(ctx: &mut ExecutionContext<'_>) -> Result<Value, RunAborted> {
+    validate_routing_expression(ctx, "branch", "condition")?;
     let resolved = expr::evaluate_in(ctx.option("condition"), ctx.inputs());
     let port = if expr::truthy(&resolved) {
         "true"
@@ -48,8 +92,9 @@ pub fn branch(ctx: &mut ExecutionContext<'_>) -> Result<Value, RunAborted> {
 ///
 /// # Errors
 ///
-/// Never.
+/// Refuses a nonblank string without expression delimiters or with an unclosed template.
 pub fn switch_case(ctx: &mut ExecutionContext<'_>) -> Result<Value, RunAborted> {
+    validate_routing_expression(ctx, "switch_case", "value")?;
     let resolved = expr::evaluate_in(ctx.option("value"), ctx.inputs());
     let key = expr::text(Some(&resolved));
 

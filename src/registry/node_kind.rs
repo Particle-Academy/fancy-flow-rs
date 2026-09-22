@@ -80,6 +80,13 @@ impl ConfigField {
         self
     }
 
+    /// Give the field help text describing its accepted value shape.
+    #[must_use]
+    pub fn describe(mut self, description: &str) -> Self {
+        self.description = Some(description.to_string());
+        self
+    }
+
     /// Give it a default, builder-style.
     #[must_use]
     pub fn default(mut self, value: Value) -> Self {
