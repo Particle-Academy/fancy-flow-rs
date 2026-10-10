@@ -8,6 +8,19 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# Least privilege, stated once for every job in this file.
+#
+# A workflow with no `permissions:` inherits the REPOSITORY default, which can be
+# read-write for the whole token — so a compromised action or a malicious
+# dependency in any step here could push to this repo. Nothing in this file needs
+# more than to read the code (checkout + the toolchain + cargo/node), and CodeQL
+# `actions/missing-workflow-permissions` flagged every job in it for that reason.
+#
+# Declared at the WORKFLOW level rather than per job, so a job added later cannot
+# silently arrive with no cap.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest

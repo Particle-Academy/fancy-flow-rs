@@ -10,6 +10,18 @@ promising otherwise until 1.0.
 
 ## [Unreleased]
 
+### Security
+
+- **CI workflows now cap the `GITHUB_TOKEN` to `contents: read`.** With no
+  `permissions:` block a workflow inherits the repository default, which can be
+  read-write for the whole token — so a compromised action or a malicious
+  transitive dependency in any step could push to this repo. Nothing in CI here
+  needs more than to read the code. Declared at the workflow level so a job
+  added later cannot arrive with no cap. **Nothing for a consumer to do and no
+  published artifact changes** — recorded because an unwritten cap is one a
+  future edit removes without anyone noticing. (CodeQL
+  `actions/missing-workflow-permissions`.)
+
 ### Added
 
 - **`for_each`'s `item` port now runs a lane once per item.** Wire `item` to a
