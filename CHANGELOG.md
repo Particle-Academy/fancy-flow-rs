@@ -10,6 +10,40 @@ promising otherwise until 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- **`transform` fields mode (2026-11-01)** — the TypeScript editor's DEFAULT
+  authoring path, which did not exist here. `transform` now declares the same
+  three keys and defaults as `@particle-academy/fancy-flow`: `mode`
+  (`fields` | `expression`, default `fields`), `fields` (rows of `{key, value}`,
+  default one blank row, `skipBlankRows`) and an optional `expression`. In
+  fields mode each row with a non-blank `key` becomes a key on the output
+  (trimmed), its `value` resolved through `{{ }}`; a blank row is skipped, a
+  repeated key keeps the later value at the first position, and a node with no
+  row to write passes its input through. Expression mode ignores `fields`,
+  fields mode ignores `expression`, an absent `mode` takes the expression when
+  one is configured, and an unknown `mode` takes the fields path — all as the
+  reference does (`nodes::logic::transform_path`).
+- `ConfigField` carries a repeater's row schema (`fields`), `skip_blank_rows`,
+  `title_key` and `add_label`, with `rows_of`, `skip_blank_rows`, `row_labels`,
+  `placeholder` and `example` builders, and writes them in `to_value` under the
+  TypeScript names.
+
+### Fixed
+
+- **The editor's defaults for a `transform` node are admitted, and an unknown
+  `mode` is refused** (reported by Maipa against the Python port, which had the
+  same gap). `validate_config` stays deliberately shallow — required fields and
+  select options — so it does not type-check `fields` rows or `expression`;
+  fancy-conformance `flow/config-admission` skips those four rows for Rust with
+  that reason.
+
+**What a consumer must DO:** a graph built in the editor in fields mode now
+produces the object it was built to produce, where it used to pass its input
+through. `ConfigField` has four new public fields, so code that builds one with
+a struct literal must add them (or use `ConfigField::new`); this crate is
+unreleased, so no published version is affected.
+
 ### Security
 
 - **CI workflows now cap the `GITHUB_TOKEN` to `contents: read`.** With no

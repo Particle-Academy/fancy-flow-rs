@@ -444,21 +444,99 @@ pub fn wait(ctx: &mut ExecutionContext<'_>) -> Result<Value, RunAborted> {
     Ok(Value::Object(out))
 }
 
-/// `transform` — reshape in place.
+/// `transform` — reshape in place. One `out` port, always active.
 ///
-/// With no expression the input passes through untouched. One `out` port,
-/// always active.
+/// A port of `transformExecutor` in `@particle-academy/fancy-flow`, the
+/// reference for this kind; which output it produces is [`transform_path`].
+/// Before this crate's first release it read `expression` alone, so fields mode — the editor's
+/// DEFAULT — did not exist here and a graph built field by field passed its
+/// input straight through.
 ///
 /// # Errors
 ///
 /// Never.
 pub fn transform(ctx: &mut ExecutionContext<'_>) -> Result<Value, RunAborted> {
-    let Some(expression) = ctx.option("expression") else {
-        return Ok(ctx.input_or_all());
-    };
-    if expression.as_str() == Some("") {
-        return Ok(ctx.input_or_all());
+    let config = ctx.config();
+    match transform_path(config) {
+        TransformPath::Expression => {
+            let expression = config.get("expression").cloned();
+            Ok(expr::evaluate_in(expression.as_ref(), ctx.inputs()))
+        }
+        TransformPath::Fields => {
+            let mut out = Map::new();
+            for (key, value) in transform_rows(config) {
+                let resolved = expr::evaluate_in(Some(&value), ctx.inputs());
+                out.insert(key, resolved);
+            }
+            Ok(Value::Object(out))
+        }
+        TransformPath::Input => Ok(ctx.input_or_all()),
     }
-    let expression = expression.clone();
-    Ok(expr::evaluate_in(Some(&expression), ctx.inputs()))
+}
+
+/// Which of its three outputs a `transform` config produces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransformPath {
+    /// `mode` is `expression` or unset, and `expression` is a non-blank string.
+    Expression,
+    /// Otherwise, when at least one row has a non-blank `key`.
+    Fields,
+    /// The input, untouched: an explicit `mode: "expression"` with no
+    /// expression, or no row with a key (the editor's untouched default).
+    Input,
+}
+
+/// Which output a `transform` config produces — `transformPath` in the
+/// reference. Any other `mode`, including one the schema does not list, takes
+/// the fields path, as TypeScript's does; the validator is what reports it.
+#[must_use]
+pub fn transform_path(config: &Map) -> TransformPath {
+    let mode = match config.get("mode") {
+        None | Some(Value::Null) => None,
+        Some(mode) => Some(mode),
+    };
+    let expression_mode = mode.and_then(Value::as_str) == Some("expression");
+    if mode.is_none() || expression_mode {
+        let configured = config
+            .get("expression")
+            .and_then(Value::as_str)
+            .is_some_and(|text| !js_trim(text).is_empty());
+        if configured {
+            return TransformPath::Expression;
+        }
+        if expression_mode {
+            return TransformPath::Input;
+        }
+    }
+    if transform_rows(config).is_empty() {
+        TransformPath::Input
+    } else {
+        TransformPath::Fields
+    }
+}
+
+/// The rows fields mode writes, in order, each key trimmed. A row that is not
+/// an object, or whose `key` is not a non-blank string, is skipped. A later row
+/// with the same key overwrites the value and keeps the first position, which is
+/// what a JavaScript object (and `Map::insert`) does.
+fn transform_rows(config: &Map) -> Vec<(String, Value)> {
+    let Some(rows) = config.get("fields").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    rows.iter()
+        .filter_map(Value::as_object)
+        .filter_map(|row| {
+            let key = js_trim(row.get("key").and_then(Value::as_str)?);
+            if key.is_empty() {
+                return None;
+            }
+            let value = row.get("value").cloned().unwrap_or(Value::Null);
+            Some((String::from(key), value))
+        })
+        .collect()
+}
+
+/// JavaScript's `trim()`: Unicode whitespace, plus the BOM JavaScript also strips.
+fn js_trim(text: &str) -> &str {
+    text.trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}')
 }

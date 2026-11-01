@@ -61,6 +61,14 @@ fn ports(ids: &[&str]) -> Vec<PortDescriptor> {
     ids.iter().map(|id| PortDescriptor::new(*id)).collect()
 }
 
+/// `transform`'s default `fields`: one blank row, `[{"key": "", "value": ""}]`.
+fn blank_transform_row() -> fancy_json::Value {
+    let mut row = fancy_json::Map::new();
+    row.insert("key", fancy_json::Value::from(""));
+    row.insert("value", fancy_json::Value::from(""));
+    fancy_json::Value::Array(alloc::vec![fancy_json::Value::Object(row)])
+}
+
 /// The authorable kinds, with canonical namespaced ids and bare aliases.
 #[must_use]
 #[expect(
@@ -262,16 +270,40 @@ pub fn kinds() -> Vec<NodeKind> {
     );
     out.push(
         NodeKind::new("transform", "logic", "Transform")
-            // logic.rs:171/174 -- TWO returns: the input when unconfigured, else the expression's shape
+            // logic::transform_path -- THREE outputs: the expression's shape, a
+            // freshly built object, or the input untouched
             .emits(EmitsRelation::Dynamic)
             .describe("Reshape in place.")
             .inputs(ports(&["in"]))
             .outputs(ports(&["out"]))
-            .config(alloc::vec![ConfigField::new(
-                "expression",
-                "expression",
-                "Expression"
-            )]),
+            // The same three keys, defaults and types as the TypeScript kind,
+            // because the TypeScript editor writes the config this reads.
+            .config(alloc::vec![
+                ConfigField::new("select", "mode", "Build the output")
+                    .options(&[
+                        ("fields", "Field by field"),
+                        ("expression", "One expression")
+                    ])
+                    .default(fancy_json::Value::from("fields")),
+                ConfigField::new("repeater", "fields", "Output fields")
+                    .describe("Each row becomes a key on the result.")
+                    .row_labels("key", "Add field")
+                    // The default row is blank and the executor skips a row
+                    // with no key, so an untouched row is a placeholder.
+                    .skip_blank_rows()
+                    .rows_of(alloc::vec![
+                        ConfigField::new("text", "key", "Key")
+                            .required()
+                            .placeholder("name"),
+                        ConfigField::new("expression", "value", "Value")
+                            .required()
+                            .example("{{ $json.first }}"),
+                    ])
+                    .default(blank_transform_row()),
+                ConfigField::new("expression", "expression", "Expression (advanced)")
+                    .describe("Used when the mode above is set to one expression.")
+                    .example("{{ { id: $json.id, name: $json.first + ' ' + $json.last } }}"),
+            ]),
     );
     out.push(
         NodeKind::new("subflow", "logic", "Subflow")

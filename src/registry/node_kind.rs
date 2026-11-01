@@ -48,6 +48,18 @@ pub struct ConfigField {
     pub rows: Option<i64>,
     /// Language for a code editor.
     pub language: Option<String>,
+    /// A `repeater`'s row schema: every row is an object with these fields.
+    pub fields: Vec<ConfigField>,
+    /// A `repeater` row whose every field is blank is an unfilled placeholder.
+    ///
+    /// Declared only where the kind's executor ignores such a row too. This
+    /// port's `validate_config` does not walk rows, so here it is declaration
+    /// only — carried so the editor catalogue says what the reference says.
+    pub skip_blank_rows: bool,
+    /// The row field whose value titles a `repeater` row in the editor.
+    pub title_key: Option<String>,
+    /// The label of a `repeater`'s add button.
+    pub add_label: Option<String>,
 }
 
 impl ConfigField {
@@ -70,7 +82,47 @@ impl ConfigField {
             credential_type: None,
             rows: None,
             language: None,
+            fields: Vec::new(),
+            skip_blank_rows: false,
+            title_key: None,
+            add_label: None,
         }
+    }
+
+    /// Make it a `repeater` whose rows have `fields`, builder-style.
+    #[must_use]
+    pub fn rows_of(mut self, fields: Vec<ConfigField>) -> Self {
+        self.fields = fields;
+        self
+    }
+
+    /// Mark a `repeater`'s wholly blank rows as placeholders, builder-style.
+    #[must_use]
+    pub fn skip_blank_rows(mut self) -> Self {
+        self.skip_blank_rows = true;
+        self
+    }
+
+    /// Title a `repeater`'s rows by `key` and label its add button.
+    #[must_use]
+    pub fn row_labels(mut self, title_key: &str, add_label: &str) -> Self {
+        self.title_key = Some(title_key.to_string());
+        self.add_label = Some(add_label.to_string());
+        self
+    }
+
+    /// Give it a placeholder, builder-style.
+    #[must_use]
+    pub fn placeholder(mut self, placeholder: &str) -> Self {
+        self.placeholder = Some(placeholder.to_string());
+        self
+    }
+
+    /// Give it a worked example, builder-style.
+    #[must_use]
+    pub fn example(mut self, example: &str) -> Self {
+        self.example = Some(example.to_string());
+        self
     }
 
     /// Mark it required, builder-style.
@@ -129,6 +181,8 @@ impl ConfigField {
             ("example", self.example.as_deref()),
             ("credentialType", self.credential_type.as_deref()),
             ("language", self.language.as_deref()),
+            ("titleKey", self.title_key.as_deref()),
+            ("addLabel", self.add_label.as_deref()),
         ] {
             if let Some(value) = value {
                 map.insert(key, Value::from(value));
@@ -154,6 +208,13 @@ impl ConfigField {
                 })
                 .collect();
             map.insert("options", Value::Array(options));
+        }
+        if self.skip_blank_rows {
+            map.insert("skipBlankRows", Value::Bool(true));
+        }
+        if !self.fields.is_empty() {
+            let fields = self.fields.iter().map(ConfigField::to_value).collect();
+            map.insert("fields", Value::Array(fields));
         }
         Value::Object(map)
     }
