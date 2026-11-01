@@ -31,6 +31,23 @@ promising otherwise until 1.0.
 
 ### Fixed
 
+- **A whitespace-only key with a value was admitted and its value silently
+  dropped at run time; it is now refused like an empty key (2026-11-01).**
+  Reported by Maipa against the TS and PHP releases; here it was wider, because
+  `validate_config` did not walk `repeater` rows at all, so even an EMPTY key
+  with a value was admitted. It now checks each object row's REQUIRED cells
+  (still no type checks on rows): a row with a blank required cell is refused
+  as `Output fields item N: Key is required.`. In a `skip_blank_rows` repeater
+  a `text` cell is blank when the executor's own `js_trim` (now `pub(crate)`;
+  `char::is_whitespace` plus U+FEFF) leaves `""`, and a row whose every cell is
+  blank is a skipped placeholder, as the editor's default still is. A padded
+  non-blank key is admitted and runs under the trimmed key; the value is never
+  trimmed; expression mode is unchanged. fancy-conformance 0.43.0 drops the
+  Rust skip on `flow/config-admission` 0006 and runs the new rows on Rust.
+
+  **What a consumer must DO:** a config that relied on this was already losing
+  data, and it now errors at validation, so fix the key. Unreleased, so no
+  published version is affected.
 - **The editor's defaults for a `transform` node are admitted, and an unknown
   `mode` is refused** (reported by Maipa against the Python port, which had the
   same gap). `validate_config` stays deliberately shallow — required fields and

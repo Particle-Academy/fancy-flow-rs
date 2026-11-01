@@ -536,7 +536,12 @@ fn transform_rows(config: &Map) -> Vec<(String, Value)> {
         .collect()
 }
 
-/// JavaScript's `trim()`: Unicode whitespace, plus the BOM JavaScript also strips.
-fn js_trim(text: &str) -> &str {
+/// JavaScript's `trim()`: Unicode whitespace (`char::is_whitespace`, the
+/// `White_Space` property), plus the BOM JavaScript also strips.
+///
+/// The ONE definition of a blank key: `NodeKindRegistry::validate_config`
+/// judges a `skip_blank_rows` row's text cells with it, so a key this executor
+/// skips is a key admission refuses whenever the row carries a value.
+pub(crate) fn js_trim(text: &str) -> &str {
     text.trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}')
 }

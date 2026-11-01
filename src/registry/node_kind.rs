@@ -52,9 +52,10 @@ pub struct ConfigField {
     pub fields: Vec<ConfigField>,
     /// A `repeater` row whose every field is blank is an unfilled placeholder.
     ///
-    /// Declared only where the kind's executor ignores such a row too. This
-    /// port's `validate_config` does not walk rows, so here it is declaration
-    /// only — carried so the editor catalogue says what the reference says.
+    /// Declared only where the kind's executor ignores such a row too.
+    /// `validate_config` walks rows for REQUIRED cells only: such a row is
+    /// skipped, and a `text` cell that trims to `""` counts as blank, by the
+    /// executor's own trim, so a whitespace-only key with a value is refused.
     pub skip_blank_rows: bool,
     /// The row field whose value titles a `repeater` row in the editor.
     pub title_key: Option<String>,

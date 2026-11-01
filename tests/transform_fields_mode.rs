@@ -186,3 +186,131 @@ fn an_unknown_mode_takes_the_fields_path_as_the_reference_does() {
     let config = r#"{"mode":"rows","fields":[{"key":"b","value":"{{ $json.a }}"}],"expression":"{{ $json }}"}"#;
     assert_eq!(run(Some(config), r#"{"a":1}"#), json(r#"{"b":1}"#));
 }
+
+// -- a whitespace-only key is blank, in admission as in the executor ---------
+//
+// `{"key": "   ", "value": "Configured synthetic value"}` was admitted, then
+// ran as a passthrough: the executor trims the key, finds it blank and skips
+// the row, so the value vanished. Reported by Maipa against the published TS
+// 0.82.0 and PHP 0.65.0; here `validate_config` did not walk rows at all, so
+// even an EMPTY key with a value was admitted. It now checks a repeater row's
+// required cells, judging a `skip_blank_rows` row's text cells by the
+// executor's own `js_trim`.
+
+/// A fields-mode config with one row; `key` and `value` are spliced in as JSON
+/// string CONTENT (raw non-ASCII is legal JSON; ASCII controls go in escaped).
+fn one_row_text(key: &str, value: &str) -> String {
+    format!(r#"{{"mode":"fields","fields":[{{"key":"{key}","value":"{value}"}}]}}"#)
+}
+
+fn one_row(key: &str, value: &str) -> Map {
+    object(&one_row_text(key, value))
+}
+
+fn issue_messages(config: &Map) -> Vec<(String, String)> {
+    kinds()
+        .validate_config("transform", config)
+        .into_iter()
+        .map(|i| (i.key, i.message))
+        .collect()
+}
+
+fn key_required() -> Vec<(String, String)> {
+    vec![(
+        String::from("fields"),
+        String::from("Output fields item 1: Key is required."),
+    )]
+}
+
+/// Whitespace the executor trims. The non-ASCII ones are built from code
+/// points so no editor or shell can collapse an escape on the way in.
+fn blank_keys() -> Vec<String> {
+    let mut keys: Vec<String> = [r"\t", r"\n", r" \r\n "]
+        .iter()
+        .map(|k| String::from(*k))
+        .collect();
+    for code in [0x00a0_u32, 0x2003, 0xfeff, 0x3000] {
+        keys.push(char::from_u32(code).unwrap().to_string());
+    }
+    keys
+}
+
+#[test]
+fn a_whitespace_only_key_with_a_value_is_refused() {
+    assert_eq!(
+        issue_messages(&one_row("   ", "Configured synthetic value")),
+        key_required()
+    );
+}
+
+#[test]
+fn an_empty_key_with_a_value_is_refused() {
+    assert_eq!(
+        issue_messages(&one_row("", "{{ $json.a }}")),
+        key_required()
+    );
+}
+
+#[test]
+fn every_whitespace_the_executor_trims_is_refused() {
+    for key in blank_keys() {
+        assert_eq!(
+            issue_messages(&one_row(&key, "x")),
+            key_required(),
+            "key {key:?}"
+        );
+        // ...and the executor really does drop that row: same helper, same verdict.
+        assert_eq!(
+            run(Some(&one_row_text(&key, "x")), r#"{"a":1}"#),
+            json(r#"{"a":1}"#),
+            "key {key:?}"
+        );
+    }
+}
+
+#[test]
+fn a_whitespace_only_key_with_an_empty_value_is_a_blank_row() {
+    assert!(issue_messages(&one_row("   ", "")).is_empty());
+    let no_value = object(r#"{"mode":"fields","fields":[{"key":"\t"}]}"#);
+    assert!(issue_messages(&no_value).is_empty());
+}
+
+#[test]
+fn a_padded_key_is_admitted_and_runs_under_the_trimmed_key() {
+    assert!(issue_messages(&one_row("  name ", "{{ $json.first }}")).is_empty());
+    assert_eq!(
+        run(
+            Some(&one_row_text("  name ", "{{ $json.first }}")),
+            r#"{"first":"Ada"}"#
+        ),
+        json(r#"{"name":"Ada"}"#)
+    );
+}
+
+#[test]
+fn the_value_is_judged_untrimmed() {
+    assert!(issue_messages(&one_row("pad", "  ")).is_empty());
+    assert_eq!(issue_messages(&one_row("", "  ")), key_required());
+}
+
+#[test]
+fn a_repeater_that_did_not_opt_in_does_not_trim() {
+    let mut kinds = NodeKindRegistry::new();
+    kinds.register(
+        fancy_flow::NodeKind::new("acme/rows", "logic", "Rows").config(vec![
+            fancy_flow::ConfigField::new("repeater", "rows", "Rows").rows_of(vec![
+                fancy_flow::ConfigField::new("text", "key", "Key").required(),
+            ]),
+        ]),
+    );
+    let padded = object(r#"{"rows":[{"key":"  "}]}"#);
+    assert!(kinds.validate_config("acme/rows", &padded).is_empty());
+    // An EMPTY required cell is refused there: walking rows is general.
+    let empty = object(r#"{"rows":[{"key":""}]}"#);
+    let keys: Vec<String> = kinds
+        .validate_config("acme/rows", &empty)
+        .into_iter()
+        .map(|i| i.key)
+        .collect();
+    assert_eq!(keys, ["rows"]);
+}

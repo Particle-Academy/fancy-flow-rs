@@ -158,6 +158,20 @@ impl NodeKindRegistry {
                 continue;
             }
 
+            if present && field.field_type == "repeater" {
+                if let Some(message) = config
+                    .get(&field.key)
+                    .and_then(Value::as_array)
+                    .and_then(|rows| first_row_missing_a_required_cell(field, rows))
+                {
+                    issues.push(ConfigIssue {
+                        key: field.key.clone(),
+                        message,
+                    });
+                }
+                continue;
+            }
+
             if !present || field.options.is_empty() {
                 continue;
             }
@@ -182,6 +196,52 @@ impl NodeKindRegistry {
     pub fn to_value(&self) -> Value {
         Value::Array(self.kinds.iter().map(NodeKind::to_value).collect())
     }
+}
+
+/// The first repeater row whose REQUIRED cell is blank, as the reference words
+/// it: `"{label} item {n}: {sub} is required."`.
+///
+/// This is the one row check this port's shallow validator makes, because it is
+/// the one whose absence loses data: `transform` skips a row with a blank key,
+/// so a row with a value and no key would be admitted and then dropped at run
+/// time without a word. Type checks on rows stay out of scope, so a row that is
+/// not an object is not this function's business and is passed over.
+///
+/// A cell is blank when absent, `null` or `""`. In a `skip_blank_rows` repeater
+/// a `text` cell that `js_trim`s to `""` is blank too -- the executor's own
+/// helper, so admission and the run cannot disagree about a whitespace key --
+/// and a row whose every cell is blank is a placeholder, skipped.
+fn first_row_missing_a_required_cell(field: &ConfigField, rows: &[Value]) -> Option<String> {
+    let blank = |sub: &ConfigField, cell: Option<&Value>| match cell {
+        None | Some(Value::Null) => true,
+        Some(value) => value.as_str().is_some_and(|text| {
+            text.is_empty()
+                || (field.skip_blank_rows
+                    && sub.field_type == "text"
+                    && crate::nodes::logic::js_trim(text).is_empty())
+        }),
+    };
+    for (index, row) in rows.iter().enumerate() {
+        let Some(row) = row.as_object() else {
+            continue;
+        };
+        if field.skip_blank_rows && field.fields.iter().all(|sub| blank(sub, row.get(&sub.key))) {
+            continue;
+        }
+        if let Some(sub) = field
+            .fields
+            .iter()
+            .find(|sub| sub.required && blank(sub, row.get(&sub.key)))
+        {
+            return Some(alloc::format!(
+                "{} item {}: {} is required.",
+                field.label,
+                index + 1,
+                sub.label
+            ));
+        }
+    }
+    None
 }
 
 impl FromIterator<NodeKind> for NodeKindRegistry {
