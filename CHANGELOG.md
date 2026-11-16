@@ -310,6 +310,7 @@ unreleased, so no published version is affected.
   which adds `flow/run-diagnostics` for the warnings above, run by
   `tests/run_diagnostics.rs`. Before the warnings this crate failed its six
   warning rows. Every existing table printed the same counts as at `v0.23.0`.
+- Rebranded the display name to Fancy Dev Kit (README and package description). Package names, the npm scope, URLs and the `fancy-ui` MCP id are unchanged.
 
 ### Fixed
 
