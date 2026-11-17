@@ -31,6 +31,9 @@ promising otherwise until 1.0.
 
 ### Fixed
 
+- **Docs:** the `RunIdentity::first_attempt_at` doc comment cited "fancy-flow-php's
+  AGENTS.md rule 4"; that rule now lives in fancy-flow-php's `CONTRIBUTING.md`, and
+  the comment says so.
 - **A whitespace-only key with a value was admitted and its value silently
   dropped at run time; it is now refused like an empty key (2026-11-01).**
   Reported by Maipa against the TS and PHP releases; here it was wider, because

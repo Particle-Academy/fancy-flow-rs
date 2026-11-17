@@ -96,7 +96,7 @@ pub struct NodeState {
     /// idempotency window is measured from, so a store that refreshed it on each
     /// reclaim would report a retry 25 hours late as seconds old -- and a
     /// connector would reuse a key the provider forgot yesterday, creating the
-    /// second charge the mechanism exists to prevent. fancy-flow-php's AGENTS.md
+    /// second charge the mechanism exists to prevent. fancy-flow-php's CONTRIBUTING.md
     /// rule 4 is the same rule.
     ///
     /// `None` for a row no attempt ever started: Python mints the wall clock
