@@ -311,6 +311,7 @@ unreleased, so no published version is affected.
   `tests/run_diagnostics.rs`. Before the warnings this crate failed its six
   warning rows. Every existing table printed the same counts as at `v0.23.0`.
 - Rebranded the display name to Fancy Dev Kit (README and package description). Package names, the npm scope, URLs and the `fancy-ui` MCP id are unchanged.
+- **Docs:** `AGENTS.md` is now the guide to using this package (install, how to find it on the Fancy MCP catalog server once it is listed, API essentials, traps). The contributor notes it held moved to `CONTRIBUTING.md`, and `CLAUDE.md` is now a symlink to it. The README points to the MCP server and to `AGENTS.md`. No code changed; nothing to do.
 
 ### Fixed
 
