@@ -141,6 +141,26 @@ impl RunEvent {
         Self::bare(Self::RUN_START)
     }
 
+    /// This event as a PARENT run sees it, or `None` if the parent must not.
+    ///
+    /// Twin of fancy-flow-php's `RunEvent::forParent` (#25). A nested run
+    /// (`for_each` over its item lane) emits events about nodes the host has
+    /// never heard of, under ids that collide with the parent's, so a
+    /// node-scoped event is re-addressed under `prefix`. Run-scoped events
+    /// return `None`: a lane's `run-start` is not the workflow starting, once
+    /// per item. An event with no node id passes through unchanged.
+    #[must_use]
+    pub fn for_parent(&self, prefix: &str) -> Option<Self> {
+        if matches!(self.kind, Self::RUN_START | Self::RUN_END | Self::RUN_ERROR) {
+            return None;
+        }
+        let mut event = self.clone();
+        if let Some(node_id) = &self.node_id {
+            event.node_id = Some(alloc::format!("{prefix}{node_id}"));
+        }
+        Some(event)
+    }
+
     /// A node changed state.
     #[must_use]
     pub fn node_status(node_id: &str, status: NodeStatus, text: Option<&str>) -> Self {

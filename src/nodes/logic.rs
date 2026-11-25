@@ -12,7 +12,9 @@ use fancy_json::{Map, Value};
 use crate::engine::FlowRunner;
 use crate::error::RunAborted;
 use crate::nodes::support::{expr, routing_diagnostics};
-use crate::runtime::{ExecutionContext, LogLevel, Pause, Port, RunEvent, RunOptions};
+use crate::runtime::{
+    escape_segment, ExecutionContext, LogLevel, Pause, Port, RunEvent, RunOptions,
+};
 use crate::schema::{FlowEdge, FlowGraph};
 
 // Routing fields require templates; ordinary literal configuration does not.
@@ -337,6 +339,17 @@ pub fn for_each(ctx: &mut ExecutionContext<'_>) -> Result<Value, RunAborted> {
         };
 
         let nested = runner.run(&lane_graph, &lane_executors, &options)?;
+
+        // EVERY node-scoped event the lane emitted, re-addressed for the
+        // parent, as fancy-flow-php's ForEachExecutor does (#25). They were
+        // collected on `nested.events` and dropped, so a status or log from
+        // inside the loop never reached the run.
+        let prefix = alloc::format!("{}/{index}/", escape_segment(&node_id));
+        for event in &nested.events {
+            if let Some(forwarded) = event.for_parent(&prefix) {
+                ctx.emit(forwarded);
+            }
+        }
 
         if !nested.ok {
             let reason = nested.error.unwrap_or_else(|| "unknown error".to_string());
