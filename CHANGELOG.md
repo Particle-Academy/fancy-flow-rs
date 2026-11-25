@@ -31,6 +31,17 @@ promising otherwise until 1.0.
 
 ### Fixed
 
+- **`for_each` now forwards every event its item lane emits** (parity with
+  fancy-flow-php #25). Each iteration's nested run collected its events and
+  `for_each` dropped them, so a status or log from a node inside the loop never
+  reached `RunResult::events`: the PHP twin reported five per-item events for
+  five items and this crate reported none. Node-scoped events now arrive
+  re-addressed as `<for_each id>/<index>/<node id>` (the id escaped as in run
+  identities) by the new `RunEvent::for_parent`, the twin of PHP's
+  `RunEvent::forParent`. A lane's own `run-start` / `run-end` / `run-error` are
+  not forwarded. Nothing to do, unless your code assumed every `node_id` in
+  `events` is a top-level node: ids with a `/` now come from inside a loop.
+
 - **Docs:** the `RunIdentity::first_attempt_at` doc comment cited "fancy-flow-php's
   AGENTS.md rule 4"; that rule now lives in fancy-flow-php's `CONTRIBUTING.md`, and
   the comment says so.
