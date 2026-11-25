@@ -130,7 +130,10 @@ fn a_claimed_node_blocks_its_successors() {
     // Held, not settled. Dispatching past a node still being worked would run a
     // successor with inputs that do not exist yet.
     let rows = state(vec![("a", NodeState::new(NodeRunStatus::Claimed))]);
-    assert!(Frontier::compute(&chain(), &rows).ready.is_empty());
+    assert_eq!(
+        Frontier::compute(&chain(), &rows).ready,
+        [] as [std::string::String; 0]
+    );
 }
 
 #[test]
@@ -140,7 +143,7 @@ fn a_skip_cascades_through_the_whole_tail() {
     let rows = state(vec![("a", NodeState::completed(&["other"]))]);
     let result = Frontier::compute(&chain(), &rows);
 
-    assert!(result.ready.is_empty());
+    assert_eq!(result.ready, [] as [std::string::String; 0]);
     assert_eq!(result.skipped, ids(&["b", "c"]));
 }
 
@@ -203,7 +206,7 @@ fn a_note_is_settled_by_the_frontier_not_dispatched() {
     // a queue round trip.
     let notes = graph(vec![node("n", "@particle-academy/note")], vec![]);
     let result = Frontier::compute(&notes, &RunState::new());
-    assert!(result.ready.is_empty());
+    assert_eq!(result.ready, [] as [std::string::String; 0]);
     assert_eq!(result.skipped, ids(&["n"]));
 }
 
@@ -214,7 +217,10 @@ fn an_edge_reads_the_source_handle_it_names() {
         vec![edge("e", "a", "b").from_port("true")],
     );
     let untaken = state(vec![("a", NodeState::completed(&["false"]))]);
-    assert!(Frontier::compute(&branchy, &untaken).ready.is_empty());
+    assert_eq!(
+        Frontier::compute(&branchy, &untaken).ready,
+        [] as [std::string::String; 0]
+    );
 
     let taken = state(vec![("a", NodeState::completed(&["true"]))]);
     assert_eq!(Frontier::compute(&branchy, &taken).ready, ids(&["b"]));
@@ -1110,7 +1116,7 @@ fn the_budget_counts_work_already_held_not_the_batch() {
         coordinator.advance()
     };
 
-    assert!(racing(1).is_empty());
+    assert_eq!(racing(1), [] as [std::string::String; 0]);
     // The CONTROL: the same held claim leaves a cap of two room for `b`.
     assert_eq!(racing(2), ids(&["b"]));
 }
@@ -1157,7 +1163,7 @@ fn a_paused_gate_keeps_its_slot() {
         serial.store().state("serial")["gate"].status,
         NodeRunStatus::Paused
     );
-    assert!(serial.advance().is_empty());
+    assert_eq!(serial.advance(), [] as [std::string::String; 0]);
 
     // The CONTROL: under unlimited, the paused gate leaves `b` to be handed out.
     let parallel = Coordinator::new(&gated, &executors, identity("parallel"), &CLOCK)
@@ -1201,7 +1207,7 @@ fn a_released_gate_resumes_and_the_run_continues_under_serial() {
         Coordinator::new(&resume, &executors, identity("resume"), &CLOCK).with_store(&store);
 
     assert!(coordinator.run_to_completion(None).paused());
-    assert!(coordinator.advance().is_empty());
+    assert_eq!(coordinator.advance(), [] as [std::string::String; 0]);
     assert!(
         !store.state("resume").contains_key("b"),
         "nothing was handed out behind the gate"
@@ -1240,7 +1246,7 @@ fn a_gate_re_entered_by_its_own_owner_frees_the_slot() {
         coordinator.run_node("gate", "worker-1").status,
         NodeOutcomeStatus::Paused
     );
-    assert!(coordinator.advance().is_empty());
+    assert_eq!(coordinator.advance(), [] as [std::string::String; 0]);
 
     submissions
         .borrow_mut()
@@ -1294,7 +1300,10 @@ fn select_dispatch_counts_claimed_and_paused_and_never_goes_negative() {
         ("f", NodeState::new(NodeRunStatus::Failed)),
     ]);
     let ready = ids(&["c", "a", "b"]);
-    assert!(select_dispatch(&ready, &rows, 1).is_empty());
+    assert_eq!(
+        select_dispatch(&ready, &rows, 1),
+        [] as [std::string::String; 0]
+    );
     assert_eq!(select_dispatch(&ready, &rows, 3), ids(&["c"]));
     assert_eq!(select_dispatch(&ready, &rows, 0), ids(&["c", "a", "b"]));
 }

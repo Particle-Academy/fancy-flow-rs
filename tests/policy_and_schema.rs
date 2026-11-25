@@ -190,7 +190,7 @@ fn a_dangling_edge_is_dropped_with_a_warning_rather_than_carried() {
         "edges":[{"id":"e1","source":"a","target":"ghost"}]}}"#;
 
     let result = import_json(document, true, &kinds()).unwrap();
-    assert!(result.graph.edges.is_empty());
+    assert_eq!(result.graph.edges, [] as [fancy_flow::FlowEdge; 0]);
     assert!(result
         .issues
         .iter()
@@ -379,7 +379,10 @@ fn a_bare_kind_id_is_refused_because_it_cannot_be_repaired_later() {
     );
 
     let good = fancy_json::parse(r#"{"kind":"@acme/my_node","version":"1.0.0"}"#).unwrap();
-    assert!(fancy_flow::marketplace::validate_manifest(&good).is_empty());
+    assert_eq!(
+        fancy_flow::marketplace::validate_manifest(&good),
+        [] as [fancy_flow::schema::ImportIssue; 0]
+    );
 }
 
 #[test]

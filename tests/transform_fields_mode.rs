@@ -96,9 +96,10 @@ fn the_declared_keys_match_the_reference() {
 
 #[test]
 fn the_editor_defaults_are_admitted() {
-    assert!(kinds()
-        .validate_config("transform", &object(EDITOR_DEFAULTS))
-        .is_empty());
+    assert_eq!(
+        kinds().validate_config("transform", &object(EDITOR_DEFAULTS)),
+        [] as [fancy_flow::registry::ConfigIssue; 0]
+    );
 }
 
 #[test]
@@ -106,7 +107,10 @@ fn expression_mode_with_the_stale_default_row_is_admitted() {
     let config = object(
         r#"{"mode":"expression","fields":[{"key":"","value":""}],"expression":"{{ $json.a }}"}"#,
     );
-    assert!(kinds().validate_config("transform", &config).is_empty());
+    assert_eq!(
+        kinds().validate_config("transform", &config),
+        [] as [fancy_flow::registry::ConfigIssue; 0]
+    );
 }
 
 #[test]
@@ -270,14 +274,23 @@ fn every_whitespace_the_executor_trims_is_refused() {
 
 #[test]
 fn a_whitespace_only_key_with_an_empty_value_is_a_blank_row() {
-    assert!(issue_messages(&one_row("   ", "")).is_empty());
+    assert_eq!(
+        issue_messages(&one_row("   ", "")),
+        [] as [(std::string::String, std::string::String); 0]
+    );
     let no_value = object(r#"{"mode":"fields","fields":[{"key":"\t"}]}"#);
-    assert!(issue_messages(&no_value).is_empty());
+    assert_eq!(
+        issue_messages(&no_value),
+        [] as [(std::string::String, std::string::String); 0]
+    );
 }
 
 #[test]
 fn a_padded_key_is_admitted_and_runs_under_the_trimmed_key() {
-    assert!(issue_messages(&one_row("  name ", "{{ $json.first }}")).is_empty());
+    assert_eq!(
+        issue_messages(&one_row("  name ", "{{ $json.first }}")),
+        [] as [(std::string::String, std::string::String); 0]
+    );
     assert_eq!(
         run(
             Some(&one_row_text("  name ", "{{ $json.first }}")),
@@ -289,7 +302,10 @@ fn a_padded_key_is_admitted_and_runs_under_the_trimmed_key() {
 
 #[test]
 fn the_value_is_judged_untrimmed() {
-    assert!(issue_messages(&one_row("pad", "  ")).is_empty());
+    assert_eq!(
+        issue_messages(&one_row("pad", "  ")),
+        [] as [(std::string::String, std::string::String); 0]
+    );
     assert_eq!(issue_messages(&one_row("", "  ")), key_required());
 }
 
@@ -304,7 +320,10 @@ fn a_repeater_that_did_not_opt_in_does_not_trim() {
         ]),
     );
     let padded = object(r#"{"rows":[{"key":"  "}]}"#);
-    assert!(kinds.validate_config("acme/rows", &padded).is_empty());
+    assert_eq!(
+        kinds.validate_config("acme/rows", &padded),
+        [] as [fancy_flow::registry::ConfigIssue; 0]
+    );
     // An EMPTY required cell is refused there: walking rows is general.
     let empty = object(r#"{"rows":[{"key":""}]}"#);
     let keys: Vec<String> = kinds

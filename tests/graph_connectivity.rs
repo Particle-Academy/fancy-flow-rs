@@ -168,31 +168,35 @@ fn a_disconnected_island_is_allowed_being_two_workflows_in_one_document() {
     // Each node has an edge, so none floats by the letter of the rule. Recorded
     // deliberately: an island is a defensible thing to author, unlike a node
     // nobody wired up.
-    assert!(errors(
-        vec![
-            node("t1", "manual_trigger"),
-            node("o1", "output"),
-            node("t2", "manual_trigger"),
-            node("o2", "output")
-        ],
-        vec![edge("e1", "t1", "o1"), edge("e2", "t2", "o2")]
-    )
-    .is_empty());
+    assert_eq!(
+        errors(
+            vec![
+                node("t1", "manual_trigger"),
+                node("o1", "output"),
+                node("t2", "manual_trigger"),
+                node("o2", "output")
+            ],
+            vec![edge("e1", "t1", "o1"), edge("e2", "t2", "o2")]
+        ),
+        [] as [std::string::String; 0]
+    );
 }
 
 // -- what may float ------------------------------------------------------
 
 #[test]
 fn a_note_may_float_because_a_note_is_an_annotation_not_a_step() {
-    assert!(errors(
-        vec![
-            node("t", "manual_trigger"),
-            node("o", "output"),
-            node("sticky", "note")
-        ],
-        vec![edge("e1", "t", "o")]
-    )
-    .is_empty());
+    assert_eq!(
+        errors(
+            vec![
+                node("t", "manual_trigger"),
+                node("o", "output"),
+                node("sticky", "note")
+            ],
+            vec![edge("e1", "t", "o")]
+        ),
+        [] as [std::string::String; 0]
+    );
 }
 
 #[test]
@@ -200,15 +204,17 @@ fn a_note_may_float_under_its_canonical_namespaced_id_too() {
     // A graph saved by a newer editor carries `@particle-academy/note`. Keying
     // the exemption on the bare spelling alone would turn every sticky note
     // into an error the moment it round-tripped.
-    assert!(errors(
-        vec![
-            node("t", "manual_trigger"),
-            node("o", "output"),
-            node("sticky", "@particle-academy/note")
-        ],
-        vec![edge("e1", "t", "o")]
-    )
-    .is_empty());
+    assert_eq!(
+        errors(
+            vec![
+                node("t", "manual_trigger"),
+                node("o", "output"),
+                node("sticky", "@particle-academy/note")
+            ],
+            vec![edge("e1", "t", "o")]
+        ),
+        [] as [std::string::String; 0]
+    );
 }
 
 #[test]
@@ -231,11 +237,17 @@ fn an_annotation_or_layout_host_kind_may_float_and_an_ordinary_one_may_not() {
 
     let mut with_note = base();
     with_note.push(node("d", "design_note"));
-    assert!(with_registry(&registry, with_note, wired()).is_empty());
+    assert_eq!(
+        with_registry(&registry, with_note, wired()),
+        [] as [std::string::String; 0]
+    );
 
     let mut with_lane = base();
     with_lane.push(node("l", "lane"));
-    assert!(with_registry(&registry, with_lane, wired()).is_empty());
+    assert_eq!(
+        with_registry(&registry, with_lane, wired()),
+        [] as [std::string::String; 0]
+    );
 
     let mut with_step = base();
     with_step.push(node("s", "design_step"));
@@ -334,15 +346,17 @@ fn an_edge_out_of_a_node_declaring_no_outputs_at_all_is_allowed() {
     // nothing to connect from"; `None` is "nobody declared it", which resolves
     // to `out` and describes most nodes in most graphs. Reading them alike
     // would refuse nearly every workflow ever written.
-    assert!(errors(
-        vec![
-            node("t", "manual_trigger"),
-            node("w", "wait"),
-            node("o", "output")
-        ],
-        vec![edge("e1", "t", "w"), edge("e2", "w", "o")]
-    )
-    .is_empty());
+    assert_eq!(
+        errors(
+            vec![
+                node("t", "manual_trigger"),
+                node("w", "wait"),
+                node("o", "output")
+            ],
+            vec![edge("e1", "t", "w"), edge("e2", "w", "o")]
+        ),
+        [] as [std::string::String; 0]
+    );
 }
 
 #[test]
@@ -365,27 +379,32 @@ fn an_edge_from_an_unknown_kind_is_not_refused() {
 
 #[test]
 fn an_ordinary_linear_workflow_passes() {
-    assert!(errors(
-        vec![
-            node("t", "manual_trigger"),
-            node("h", "api_request"),
-            node("x", "transform"),
-            node("o", "output")
-        ],
-        vec![
-            edge("e1", "t", "h"),
-            edge("e2", "h", "x"),
-            edge("e3", "x", "o")
-        ]
-    )
-    .is_empty());
+    assert_eq!(
+        errors(
+            vec![
+                node("t", "manual_trigger"),
+                node("h", "api_request"),
+                node("x", "transform"),
+                node("o", "output")
+            ],
+            vec![
+                edge("e1", "t", "h"),
+                edge("e2", "h", "x"),
+                edge("e3", "x", "o")
+            ]
+        ),
+        [] as [std::string::String; 0]
+    );
 }
 
 #[test]
 fn a_single_node_graph_passes_being_a_small_workflow_not_a_floating_node() {
     // Refusing this would make an editor unusable from the first node placed,
     // and the node genuinely runs — there is no second node it fails to reach.
-    assert!(errors(vec![node("t", "manual_trigger")], vec![]).is_empty());
+    assert_eq!(
+        errors(vec![node("t", "manual_trigger")], vec![]),
+        [] as [std::string::String; 0]
+    );
 }
 
 #[test]

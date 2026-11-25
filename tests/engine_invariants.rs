@@ -236,7 +236,7 @@ fn a_terminal_kind_with_nothing_downstream_stays_silent() {
         .expect("not cancelled");
 
     assert!(result.ok);
-    assert!(result.activated_ports("t").is_empty());
+    assert_eq!(result.activated_ports("t"), [] as [&str; 0]);
     assert!(warnings_of(&result).is_empty(), "{:?}", result.events);
 }
 

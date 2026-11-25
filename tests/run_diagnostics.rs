@@ -246,7 +246,10 @@ fn possible_ports_reads_config_for_the_kinds_that_derive_ports_from_it() {
     // the other of the two gates that shape a port set. Reporting `out` as
     // deliverable for a node that publishes nothing is precisely how a
     // truncated chain stays SILENT — the warning below is what replaces it...
-    assert!(ports(&FlowNode::new("o", "output")).is_empty());
+    assert_eq!(
+        ports(&FlowNode::new("o", "output")),
+        [] as [std::string::String; 0]
+    );
     // ...and a kind nobody registered publishes exactly `out`.
     assert_eq!(
         possible_ports(&FlowNode::new("x", "@acme/widget"), None),
