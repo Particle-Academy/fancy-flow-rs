@@ -212,8 +212,12 @@ pub fn kinds() -> Vec<NodeKind> {
             .output_shape(
                 [
                     OutputField::new("items", "array").describe("The list that was iterated."),
-                    OutputField::new("results", "array")
-                        .describe("Each item's lane outputs, index-aligned; null where it failed."),
+                    OutputField::new("results", "array").describe(
+                        "One entry per item, in item order: that iteration's node outputs keyed by \
+                         node id, so a lane node's field is `results.0.<node-id>.<field>` (e.g. \
+                         `{{ in.results.0.score-1.total }}`). A failed item's entry is null; its \
+                         error is in `failures`.",
+                    ),
                     OutputField::new("failures", "array")
                         .describe("{index, item, error} for each item whose lane failed."),
                     OutputField::new("count", "number").describe("How many items it held."),
@@ -223,8 +227,10 @@ pub fn kinds() -> Vec<NodeKind> {
             )
             .describe(
                 "Wire `item` to a lane and it runs once per item, aggregating `results` and \
-                 `failures` on `done`. Leave `item` unwired (or set `mode: collect`) and it \
-                 just publishes the list and its size -- one node, one checkpoint.",
+                 `failures` on `done`. Each `results` entry is that iteration's node outputs \
+                 keyed by node id (`results.0.<node-id>.<field>`), and null for a failed item. \
+                 Leave `item` unwired (or set `mode: collect`) and it just publishes the list \
+                 and its size -- one node, one checkpoint.",
             )
             .inputs(ports(&["in"]))
             .outputs(ports(&["item", "done"]))
